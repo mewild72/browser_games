@@ -1,0 +1,32 @@
+{
+  "$schema_comment": "Latest stable upstream versions discovered by agents. Updated whenever an agent fetches release notes or sees a new version. The user uses this to decide when to upgrade.",
+  "lastUpdated": "2026-04-25",
+  "lastCheckedBy": "build-portability-expert (during initial scaffold)",
+  "framework": {
+    "svelte": "5.55.5",
+    "vite": "8.0.10",
+    "@sveltejs/vite-plugin-svelte": "7.0.0"
+  },
+  "language": {
+    "typescript": "6.0.3"
+  },
+  "storage": {
+    "dexie": "4.4.2"
+  },
+  "testing": {
+    "vitest": "4.1.5",
+    "playwright": "1.59.1",
+    "@axe-core/playwright": "4.11.2",
+    "fast-check": "4.7.0"
+  },
+  "linting": {
+    "eslint": "10.2.1",
+    "prettier": "3.8.3",
+    "svelte-check": "4.4.6"
+  },
+  "notes": [
+    "All entries reflect what npm resolved during initial scaffold on 2026-04-25.",
+    "version.json mirrors these as major-version ranges (e.g., 8.x for Vite).",
+    "Agents should refresh this when discovering newer stable releases."
+  ]
+}

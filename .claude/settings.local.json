@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:bicyclecards.com)",
+      "Bash(npm --version)",
+      "Bash(rm -rf /tmp/euchre-scaffold)",
+      "Bash(mkdir -p /tmp/euchre-scaffold)",
+      "Read(//tmp/**)",
+      "Bash(npm create *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(npm ls *)",
+      "Bash(npx vitest *)",
+      "Bash(mv /home/ticketscene/euchre /home/ticketscene/browser_games)",
+      "Read(//home/ticketscene/**)"
+    ]
+  }
+}

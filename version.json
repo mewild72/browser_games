@@ -1,0 +1,43 @@
+{
+  "$schema_comment": "Versions currently in use in this project. Update by hand when you bump dependencies. Agents read this before writing code so they target compatible patterns.",
+  "lastUpdated": "2026-04-25",
+  "runtime": {
+    "node": "24.x",
+    "npm": "10.x"
+  },
+  "framework": {
+    "svelte": "5.x",
+    "vite": "8.x",
+    "@sveltejs/vite-plugin-svelte": "7.x"
+  },
+  "language": {
+    "typescript": "6.x"
+  },
+  "storage": {
+    "dexie": "4.x"
+  },
+  "testing": {
+    "vitest": "4.x",
+    "playwright": "1.x",
+    "@axe-core/playwright": "4.x",
+    "fast-check": "4.x",
+    "jsdom": "latest"
+  },
+  "linting": {
+    "eslint": "10.x",
+    "prettier": "3.x",
+    "svelte-check": "4.x"
+  },
+  "browsers": {
+    "chrome": "latest two versions",
+    "firefox": "latest two versions",
+    "safari": "latest two versions",
+    "edge": "latest two versions"
+  },
+  "notes": [
+    "All version pins are major-version ranges. Lockfile (package-lock.json) is the precise authority.",
+    "Reconciled 2026-04-25 with what npm create vite@latest actually installed — Vite 8, TS 6, Vitest 4, fast-check 4, ESLint 10 are current upstream majors.",
+    "Bump policies: minors silently when modernizing, majors only via the upgrade workflow with version-notes.md entries.",
+    "When a major bump is needed, document required code changes in version-notes.md before bumping."
+  ]
+}
