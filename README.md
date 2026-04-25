@@ -1,5 +1,7 @@
 # Browser Games
 
+[![CI](https://github.com/mewild72/browser_games/actions/workflows/ci.yml/badge.svg)](https://github.com/mewild72/browser_games/actions/workflows/ci.yml)
+
 A suite of browser-based card games that run entirely client-side — no server, no internet required at runtime. Build once, copy the `dist/` folder to a USB drive, and play anywhere with a modern browser.
 
 **Status:** Early development. Euchre is the first game.
