@@ -156,6 +156,77 @@ function makePlayingStateAwaiting4thCard(): PlayingState {
   };
 }
 
+/**
+ * A `PlayingState` poised for the human (south) to play the 4th card
+ * of the FIFTH (and final) trick of the hand. Four tricks are already
+ * complete; the 5th has west, north, and east already played. Trump
+ * is clubs; led suit is spades.
+ *
+ * Crucially, the eventual winner of this 5th trick is `east` (K♠ beats
+ * 10♠/Q♠/9♠ on the spade-led trick), which is DIFFERENT from
+ * `trickLeader` (`west`). That distinction is what makes this a
+ * regression fixture: the prior `maybeStartTrickPause` fell back to
+ * `prev.trickLeader` for the hand-complete branch, which would set
+ * `displayedTrick.value.winner = 'west'` instead of the actual
+ * `'east'`. The fix uses `resolveTrick` so the winner is always
+ * computed from the four plays under `prev.trump`.
+ *
+ * After south plays 10♠, the engine resolves the trick (east wins),
+ * the 5th completed trick lands NS at 4 tricks and EW at 1. NS scores
+ * 1 point under standard scoring, which is below `pointsToWin` (10),
+ * so `next.phase === 'hand-complete'` — exactly the case the
+ * regression broke.
+ */
+function makePlayingStateAwaiting4thCardOfFifthTrick(): PlayingState {
+  const wLead: TrickPlay = { seat: 'west', card: { suit: 'spades', rank: '9' } };
+  const nPlay: TrickPlay = { seat: 'north', card: { suit: 'spades', rank: 'Q' } };
+  const ePlay: TrickPlay = { seat: 'east', card: { suit: 'spades', rank: 'K' } };
+  const southCard: Card = { suit: 'spades', rank: '10' };
+  // Four completed tricks. Winners alternate but fully NS-favoured so
+  // the engine doesn't transition to `game-complete` (NS would have
+  // 1 point at hand close).
+  const fakeTrick = (winner: PlayingState['trickLeader']) => ({
+    leader: winner,
+    plays: [
+      { seat: 'north' as const, card: { suit: 'hearts' as const, rank: '9' as const } },
+      { seat: 'east' as const, card: { suit: 'hearts' as const, rank: '10' as const } },
+      { seat: 'south' as const, card: { suit: 'hearts' as const, rank: 'J' as const } },
+      { seat: 'west' as const, card: { suit: 'hearts' as const, rank: 'Q' as const } },
+    ],
+    winner,
+  });
+  return {
+    phase: 'playing',
+    gameId: 'g-fifth-trick' as PlayingState['gameId'],
+    handId: 'h-fifth-trick' as PlayingState['handId'],
+    variants: defaults,
+    dealer: 'north',
+    score: { ns: 0, ew: 0 },
+    hands: {
+      north: [],
+      east: [],
+      south: [southCard],
+      west: [],
+    },
+    trump: 'clubs',
+    maker: 'ns',
+    makerSeat: 'north',
+    alone: false,
+    sittingOut: null,
+    orderedUpInRound: 1,
+    trickLeader: 'west',
+    turn: 'south',
+    currentTrick: [wLead, nPlay, ePlay],
+    completedTricks: [
+      fakeTrick('north'),
+      fakeTrick('south'),
+      fakeTrick('north'),
+      fakeTrick('south'),
+    ],
+    tricksWon: { makers: 4, defenders: 0 },
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* setVariants persists to localStorage                               */
 /* ------------------------------------------------------------------ */
@@ -406,6 +477,62 @@ describe('trick-display pause', () => {
       flushSync();
       // Pause is 0 ms — displayedTrick must remain null so the next
       // trick renders immediately.
+      expect(stateMod.displayedTrick.value).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('5th-trick pause: displayedTrick is set with the actual winner across the hand-complete transition', () => {
+    // Regression guard for the "delay on the last card of the round
+    // doesn't seem to be working" report: when the 4th card of trick
+    // 5 is played, the engine returns a `hand-complete` state, NOT a
+    // `playing` state. The old code derived the displayed `winner`
+    // from `next.completedTricks`, which doesn't exist on
+    // `hand-complete`, falling back to `prev.trickLeader` — usually
+    // the WRONG seat. `<PlayerSeat>` reads `displayedTrick.winner`
+    // and only renders the won-trick overlay at that exact seat, so
+    // the user perceived the pause as missing.
+    vi.useFakeTimers();
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    try {
+      stateMod.game.value = makePlayingStateAwaiting4thCardOfFifthTrick();
+      flushSync();
+      expect(stateMod.displayedTrick.value).toBeNull();
+
+      // Human plays the only legal card — this finishes trick 5 and
+      // resolves the hand.
+      const ok = stateMod.dispatchUser({
+        type: 'playCard',
+        seat: 'south',
+        card: { suit: 'spades', rank: '10' },
+      });
+      flushSync();
+      expect(ok).toBe(true);
+
+      // The state must now be in `hand-complete` AND the displayed
+      // trick must be populated with the four plays AND the actual
+      // winner (east — the K♠ beats 9♠/Q♠/10♠ on a spade-led trick).
+      expect(stateMod.game.value.phase).toBe('hand-complete');
+      const dt = stateMod.displayedTrick.value;
+      expect(dt).not.toBeNull();
+      expect(dt!.plays).toHaveLength(4);
+      expect(dt!.plays[3]).toEqual({
+        seat: 'south',
+        card: { suit: 'spades', rank: '10' },
+      });
+      // The crucial regression assertion: winner is `east`, not the
+      // trick leader `west`.
+      expect(dt!.winner).toBe('east');
+
+      // The pause must hold for the configured trick-pause window.
+      // Just-under should still hold; just-after should clear.
+      vi.advanceTimersByTime(799);
+      expect(stateMod.displayedTrick.value).not.toBeNull();
+      vi.advanceTimersByTime(2);
       expect(stateMod.displayedTrick.value).toBeNull();
     } finally {
       cleanup();

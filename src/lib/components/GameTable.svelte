@@ -50,6 +50,37 @@
    * game-complete) — the indicator hides itself for those phases.
    */
   const trumpSuit = $derived<Suit | undefined>(extractTrumpSuit(state));
+  /**
+   * Per-seat captured-trick counts for the active hand. Each completed
+   * trick has a `winner: Seat`; we tally winners across `completedTricks`
+   * to get how many tricks each seat has personally captured. Sum across
+   * all seats equals `completedTricks.length` (0..5).
+   *
+   * Only populated during the `playing` phase — that is the one phase
+   * where `completedTricks` is carried on the engine state. At
+   * `hand-complete` the engine has discarded the per-trick history in
+   * favour of the partnership-level `result.tricksWon`, and the hand-
+   * complete panel takes over the visual conversation, so per-seat
+   * stacks naturally fall to zero. At deal/bidding/dealer-discard there
+   * are no tricks yet, so all four counts are zero.
+   *
+   * The engine resets `completedTricks` to `[]` on the next deal, so this
+   * derivation naturally returns to zero on each new hand without any
+   * component-side state-keeping.
+   */
+  const capturedBySeat = $derived<Record<Seat, number>>(
+    extractCapturedBySeat(state),
+  );
+
+  function extractCapturedBySeat(s: GameState): Record<Seat, number> {
+    const counts: Record<Seat, number> = { north: 0, east: 0, south: 0, west: 0 };
+    if (s.phase === 'playing') {
+      for (const trick of s.completedTricks) {
+        counts[trick.winner] += 1;
+      }
+    }
+    return counts;
+  }
 
   function extractTrumpSuit(s: GameState): Suit | undefined {
     return s.phase === 'playing' ? s.trump : undefined;
@@ -263,6 +294,7 @@
         isDealer={dealer === 'north'}
         isMaker={makerSeat === 'north'}
         isSittingOut={sittingOut === 'north'}
+        capturedTricks={capturedBySeat.north}
       />
     </div>
 
@@ -274,6 +306,7 @@
         isDealer={dealer === 'west'}
         isMaker={makerSeat === 'west'}
         isSittingOut={sittingOut === 'west'}
+        capturedTricks={capturedBySeat.west}
       />
     </div>
 
@@ -293,6 +326,7 @@
         isDealer={dealer === 'east'}
         isMaker={makerSeat === 'east'}
         isSittingOut={sittingOut === 'east'}
+        capturedTricks={capturedBySeat.east}
       />
     </div>
 
@@ -307,6 +341,7 @@
         isSittingOut={sittingOut === 'south'}
         playable={humanPlayable}
         onPlay={onPlayHumanCard}
+        capturedTricks={capturedBySeat.south}
       />
     </div>
 

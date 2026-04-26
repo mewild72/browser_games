@@ -24,6 +24,15 @@
     /** Cards from `cards` that the player may play right now (human only). */
     playable?: readonly Card[];
     onPlay?: ((card: Card) => void) | undefined;
+    /**
+     * Number of tricks this seat has personally captured this hand
+     * (0..5). Renders a visual stack of face-down cards alongside the
+     * hand — one per captured trick — so the table feels like physical
+     * tricks accumulating in front of each player. The value resets
+     * naturally on each new deal because the engine clears
+     * `completedTricks`. Zero (or default) renders nothing.
+     */
+    capturedTricks?: number;
   };
 
   let {
@@ -36,7 +45,28 @@
     isSittingOut = false,
     playable = [],
     onPlay,
+    capturedTricks = 0,
   }: Props = $props();
+
+  /**
+   * The captured-stack always renders at most 5 cards (a Euchre hand has
+   * exactly 5 tricks), so we precompute the index list here. Using a
+   * `$derived` keeps the array identity stable when the count is
+   * unchanged across reactive ticks.
+   */
+  const stackIndexes = $derived<readonly number[]>(
+    Array.from({ length: Math.max(0, Math.min(5, capturedTricks)) }, (_, i) => i),
+  );
+
+  /**
+   * Accessible name for the stack — singular vs plural, suppressed when
+   * empty (the wrapper is not rendered at all in that case).
+   */
+  const stackLabel = $derived(
+    capturedTricks === 1
+      ? '1 trick captured'
+      : `${capturedTricks} tricks captured`,
+  );
 
   /**
    * The just-completed trick to render *at this seat* — non-null only
@@ -84,13 +114,37 @@
       {/if}
     </span>
   </header>
-  <Hand
-    cards={cards}
-    faceDown={!isHuman}
-    playable={playable}
-    onPlay={onPlay}
-    ariaLabel={`${seat} hand, ${cards.length} ${cards.length === 1 ? 'card' : 'cards'}`}
-  />
+  <!--
+    Hand row: the player's hand sits alongside the captured-tricks stack
+    so each player visibly accumulates the tricks they've won, like a
+    physical pile to the right of their cards. The stack lives inside a
+    fixed-width container so it cannot push the hand around as the
+    capture count grows.
+  -->
+  <div class="hand-row">
+    <Hand
+      cards={cards}
+      faceDown={!isHuman}
+      playable={playable}
+      onPlay={onPlay}
+      ariaLabel={`${seat} hand, ${cards.length} ${cards.length === 1 ? 'card' : 'cards'}`}
+    />
+    {#if capturedTricks > 0}
+      <!--
+        Visual stack of captured tricks. Each card is `Card.svelte` in
+        face-down mode (so it tracks the user's selected card-back via
+        the `selectedBackId` rune) wrapped in an `aria-hidden` span — the
+        single accessible name lives on the outer `role="img"` wrapper.
+      -->
+      <div class="captured-stack" role="img" aria-label={stackLabel}>
+        {#each stackIndexes as i (i)}
+          <span class="captured-card" aria-hidden="true">
+            <CardView card={undefined} faceDown />
+          </span>
+        {/each}
+      </div>
+    {/if}
+  </div>
   {#if wonTrick !== null}
     <!--
       Just-won trick rendered next to the seat that won it. The four (or
@@ -244,5 +298,82 @@
     font-weight: 400;
     text-transform: none;
     letter-spacing: 0;
+  }
+  /*
+    Hand-row groups the hand and the captured-tricks stack on the same
+    horizontal line. Wrapping the hand in a row container keeps the
+    stack visually adjacent to the cards regardless of seat orientation
+    — the four seats lay out their hands horizontally (north, south)
+    and the stack sits to the right; for the side seats (east, west)
+    the hand also flows horizontally inside its panel and the stack
+    again falls to the right of the hand in reading order, which reads
+    as "after the hand" naturally.
+  */
+  .hand-row {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    /* Hand is the dominant element; the stack flexes to its intrinsic
+       width and never pushes the hand around. */
+    flex-wrap: nowrap;
+  }
+  /*
+    Captured-tricks stack: a small pile of face-down cards rendered at
+    60% of the regular card size. Cards are positioned absolutely with
+    a small per-card offset (4px right, 4px down) so the stack reads
+    as a leaning pile rather than overlapping perfectly. The container
+    is a fixed-width box (one card width plus the maximum offset) so
+    the stack does not jiggle the surrounding layout when the count
+    changes from 0 → 5.
+  */
+  .captured-stack {
+    --captured-scale: 0.6;
+    --captured-offset: 4px;
+    /* Maximum offset across 5 cards (4 increments). */
+    --captured-max-offset: calc(var(--captured-offset) * 4);
+    position: relative;
+    inline-size: calc(var(--card-w) * var(--captured-scale) + var(--captured-max-offset));
+    block-size: calc(var(--card-h) * var(--captured-scale) + var(--captured-max-offset));
+    flex: 0 0 auto;
+  }
+  .captured-card {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    /* Override --card-w / --card-h so Card.svelte's
+       `inline-size: var(--card-w)` rule paints the face-down card at
+       the reduced stack size. Per the CSS Custom Properties spec, a
+       declaration like `--card-w: calc(var(--card-w) * 0.6)` resolves
+       the inner `var(--card-w)` against the inherited value (i.e. the
+       global token), so this scales without recursion. The scoping
+       only affects descendants of `.captured-card` — the parent hand's
+       cards are unaffected. */
+    --card-w: calc(var(--card-w) * var(--captured-scale));
+    --card-h: calc(var(--card-h) * var(--captured-scale));
+    /* Each successive card shifts down and right so the stack visibly
+       grows. nth-child(n) drives the offset so we don't need a per-
+       element inline style. Up to 5 children (Euchre = 5 tricks/hand). */
+    transform: translate(0, 0);
+  }
+  .captured-card:nth-child(2) {
+    transform: translate(var(--captured-offset), var(--captured-offset));
+  }
+  .captured-card:nth-child(3) {
+    transform: translate(
+      calc(var(--captured-offset) * 2),
+      calc(var(--captured-offset) * 2)
+    );
+  }
+  .captured-card:nth-child(4) {
+    transform: translate(
+      calc(var(--captured-offset) * 3),
+      calc(var(--captured-offset) * 3)
+    );
+  }
+  .captured-card:nth-child(5) {
+    transform: translate(
+      var(--captured-max-offset),
+      var(--captured-max-offset)
+    );
   }
 </style>

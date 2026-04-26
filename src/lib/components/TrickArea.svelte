@@ -25,7 +25,7 @@
    *
    * Owner: svelte-component-architect
    */
-  import type { Suit, TrickPlay } from '@/lib/types';
+  import type { Seat, Suit, TrickPlay } from '@/lib/types';
   import { displayedTrick } from '@/lib/game/state.svelte';
   import CardView from './Card.svelte';
   import TrumpIndicator from './TrumpIndicator.svelte';
@@ -40,6 +40,14 @@
   };
 
   let { plays, trump }: Props = $props();
+
+  /**
+   * The four cardinal seats, in a stable rendering order. Used to
+   * stamp out a blank placeholder card in each empty cardinal slot so
+   * the trump always reads visually centred even when fewer than four
+   * plays have landed on the table.
+   */
+  const SEATS: readonly Seat[] = ['north', 'east', 'south', 'west'];
 
   /**
    * Cards to render in the centre. While the post-trick pause is
@@ -67,6 +75,24 @@
   const indicatorSize = $derived<'large' | 'small'>(
     visiblePlays.length === 0 ? 'large' : 'small',
   );
+
+  /**
+   * Lookup the seat → play mapping for the currently-visible trick.
+   * `null` for seats that haven't played yet. During active trick play
+   * (trump defined, not frozen) those positions render a blank card
+   * placeholder so the trump always reads visually centred. Outside
+   * active play (bidding, dealer-discard, hand-complete, frozen pause)
+   * the placeholders are suppressed entirely.
+   */
+  const showPlaceholders = $derived(trump !== undefined && !isFrozen);
+  const playBySeat = $derived<Readonly<Record<Seat, TrickPlay | null>>>(
+    Object.fromEntries(
+      SEATS.map((seat) => [
+        seat,
+        visiblePlays.find((p) => p.seat === seat) ?? null,
+      ]),
+    ) as Record<Seat, TrickPlay | null>,
+  );
 </script>
 
 <section class="trick" aria-labelledby="trick-heading">
@@ -89,12 +115,38 @@
         <TrumpIndicator suit={trump} size={indicatorSize} />
       </div>
     {/if}
-    {#each visiblePlays as play (play.seat)}
-      <div class="play" style:grid-area={play.seat} role="listitem">
-        <span class="seat">{play.seat}</span>
-        <CardView card={play.card} />
-      </div>
-    {/each}
+    {#if showPlaceholders}
+      {#each SEATS as seatSlot (seatSlot)}
+        {#if playBySeat[seatSlot] !== null}
+          <div class="play" style:grid-area={seatSlot} role="listitem">
+            <span class="seat">{seatSlot}</span>
+            <CardView card={playBySeat[seatSlot]!.card} />
+          </div>
+        {:else}
+          <!--
+            Empty cardinal position. Render a dimmed placeholder so the
+            cross stays balanced around the trump and the user can see
+            "north hasn't played yet" at a glance. Decorative-only —
+            screen readers already get the play count from the heading
+            and list label.
+          -->
+          <div
+            class="play-placeholder"
+            style:grid-area={seatSlot}
+            aria-hidden="true"
+          >
+            <span class="card-placeholder"></span>
+          </div>
+        {/if}
+      {/each}
+    {:else}
+      {#each visiblePlays as play (play.seat)}
+        <div class="play" style:grid-area={play.seat} role="listitem">
+          <span class="seat">{play.seat}</span>
+          <CardView card={play.card} />
+        </div>
+      {/each}
+    {/if}
   </div>
   {#if visiblePlays.length === 0 && !isFrozen && trump === undefined}
     <p class="empty">No card played yet.</p>
@@ -153,6 +205,33 @@
     color: var(--text-muted);
     font-size: var(--font-size-sm);
     font-style: italic;
+  }
+  /*
+    Empty-seat placeholder. Same footprint as a real card so the four
+    cardinal slots maintain identical geometry whether or not a play
+    has landed in them. Dimmed dashed border reads as "this position is
+    waiting for a card" without competing with the real plays for
+    attention.
+  */
+  .play-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /*
+      Match the play wrapper's vertical rhythm — a real `.play` adds a
+      small seat label above the card, so we add the same padding-top
+      to keep the placeholder's card centred at the same y as a real
+      play's card.
+    */
+    padding-block-start: calc(var(--space-2) + 1em);
+  }
+  .card-placeholder {
+    inline-size: var(--card-w);
+    block-size: var(--card-h);
+    border-radius: var(--radius-card);
+    border: 2px dashed hsla(0, 0%, 100%, 0.18);
+    background-color: hsla(0, 0%, 100%, 0.025);
+    opacity: 0.6;
   }
 
   @media (prefers-reduced-motion: reduce) {

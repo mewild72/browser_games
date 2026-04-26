@@ -19,7 +19,7 @@ import type {
   Variants,
 } from '@/lib/types';
 import { defaults } from '@/lib/types';
-import { defaultRng, legalActions } from '@/lib/euchre';
+import { defaultRng, legalActions, resolveTrick } from '@/lib/euchre';
 import type { Bot, Difficulty } from '@/lib/ai';
 import {
   getPref,
@@ -244,11 +244,11 @@ function clearTrickPauseTimer(): void {
  *
  * In both cases we construct the `CompletedTrick` to display from
  * `prev.currentTrick` (the three already-played plays) plus the action
- * itself (the 4th play). The displayed `winner` is a best-effort —
- * sourced from `next.completedTricks` when available, otherwise from
- * `next.trickLeader` (whose seat the engine rotated to in case 1) —
- * but the visual rendering doesn't surface the winner directly, so
- * the placeholder is fine for the hand-complete case.
+ * itself (the 4th play). The winner is resolved via `resolveTrick` from
+ * the rules engine using `prev.trump` so the `<PlayerSeat>` overlay
+ * lands at the correct seat — including for the 5th trick of the hand,
+ * where `next` is `hand-complete` / `game-complete` and the trick is
+ * not represented on the next state.
  */
 function maybeStartTrickPause(
   prev: GameState,
@@ -262,13 +262,19 @@ function maybeStartTrickPause(
   const fourthPlay = { seat: action.seat, card: action.card };
   const plays = [...prev.currentTrick, fourthPlay];
 
-  // Resolve the winner where we can; otherwise fall back to the
-  // trickLeader from the prev state (visual-only placeholder).
-  let winner = prev.trickLeader;
-  if (next.phase === 'playing' && next.completedTricks.length > prev.completedTricks.length) {
-    const ct = next.completedTricks[next.completedTricks.length - 1];
-    if (ct !== undefined) winner = ct.winner;
-  }
+  // Compute the winner from the just-completed plays under `prev.trump`.
+  // Mirrors `engine.ts`'s own `resolveTrick(newCurrentTrick, state.trump)`
+  // and works uniformly for tricks 1-4 (where `next` is still `playing`
+  // and surfaces the trick on `completedTricks`) AND trick 5 (where
+  // `next` is `hand-complete`/`game-complete` with no `completedTricks`
+  // entry to read from). Without this, trick 5 fell back to
+  // `prev.trickLeader`, which is rarely the actual winner — the
+  // `<PlayerSeat>` won-trick overlay then renders at the wrong seat
+  // (or, when the leader was the lone-hand sit-out partner, at no seat
+  // at all), so the user perceives the post-trick pause as missing on
+  // the last card of the hand.
+  const winner: Seat = resolveTrick(plays, prev.trump);
+  void next;
 
   const justCompleted: CompletedTrick = {
     leader: prev.trickLeader,
