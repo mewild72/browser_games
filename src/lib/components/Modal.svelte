@@ -113,25 +113,29 @@
     }
   }
 
-  function onBackdrop(e: MouseEvent): void {
-    if (e.target === e.currentTarget) onclose();
+  function onBackdrop(_e: MouseEvent): void {
+    // The backdrop is a sibling of the dialog, so any click that lands on it
+    // is by definition outside the dialog — no need to compare target vs
+    // currentTarget the way we did when the dialog was nested inside.
+    onclose();
   }
 </script>
 
 {#if open}
   <!--
-    The backdrop is decorative (role="presentation", aria-hidden) and serves
-    only to position the dialog and capture click-outside-to-dismiss. Escape
-    handling lives on the dialog itself, which is focusable via tabindex=-1.
-    Screen readers see only the dialog (role="dialog", aria-modal="true",
-    aria-labelledby pointing at the modal's <h2>).
+    Backdrop and dialog are SIBLINGS, not parent/child. If the dialog were a
+    child of an aria-hidden="true" backdrop, the hidden state would cascade to
+    the dialog and remove it from the AT tree (axe rule: aria-hidden + dialog).
+    The wrapper .modal-root has no role and no aria-hidden so it does not
+    affect the AT tree.
+
+    The backdrop is purely visual (it provides the dim/blur scrim and captures
+    click-outside-to-dismiss). aria-modal="true" on the dialog already tells
+    AT that everything outside the dialog is inert, so we omit aria-hidden on
+    the backdrop entirely.
   -->
-  <div
-    class="backdrop"
-    role="presentation"
-    aria-hidden="true"
-    onclick={onBackdrop}
-  >
+  <div class="modal-root">
+    <div class="backdrop" onclick={onBackdrop} role="presentation"></div>
     <div
       class="dialog"
       role="dialog"
@@ -155,19 +159,28 @@
 {/if}
 
 <style>
+  /* The wrapper has no role/aria-hidden so it doesn't affect the AT tree.
+     It exists only to scope the fixed-position backdrop+dialog pair. */
+  .modal-root {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    display: grid;
+    place-items: center;
+    padding: var(--space-4);
+    pointer-events: none;
+  }
   .backdrop {
     position: fixed;
     inset: 0;
     background-color: var(--bg-modal-backdrop);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
-    display: grid;
-    place-items: center;
-    z-index: var(--z-modal);
-    padding: var(--space-4);
+    pointer-events: auto;
     animation: modal-fade-in var(--duration-normal) var(--easing-standard);
   }
   .dialog {
+    position: relative;
     background-color: var(--bg-modal-surface);
     color: var(--text-primary);
     padding: var(--space-5);
@@ -178,6 +191,7 @@
     overflow-y: auto;
     box-shadow: var(--shadow-modal);
     animation: modal-scale-in var(--duration-normal) var(--easing-emphasized);
+    pointer-events: auto;
   }
   .dlg-hdr {
     display: flex;

@@ -14,17 +14,8 @@ import { openDialog, playHandToCompletion } from './_helpers';
 
 test.setTimeout(90_000);
 
-/**
- * STATUS: fixme — blocked by the same production bug that blocks
- * `tests/e2e/golden-path.spec.ts`. After a hand completes, the app
- * raises `effect_update_depth_exceeded` and the reactive system
- * stops processing further updates; the topbar Stats button no
- * longer opens the modal. See the golden-path spec for the full
- * diagnosis. Once `src/lib/game/state.svelte.ts:186`'s persist
- * effect is fixed, remove `.fixme` and this test should pass.
- */
 test.describe('Stats', () => {
-  test.fixme('hand count increments and recent-games shows up after one hand', async ({
+  test('hand count increments and recent-games shows up after one hand', async ({
     page,
   }) => {
     await page.addInitScript(() => {
@@ -60,13 +51,8 @@ test.describe('Stats', () => {
     // Run a hand to completion.
     await playHandToCompletion(page);
 
-    // Re-open Stats. After hand-complete the action-log entries can
-    // visually overlap the topbar Stats button at common viewport
-    // sizes (CSS issue forwarded to css-expert in the QA report).
-    // Dispatch the click directly so we bypass the pointer overlap.
-    await page
-      .getByRole('button', { name: /^Stats$/ })
-      .evaluate((el) => (el as HTMLButtonElement).click());
+    // Re-open Stats.
+    await page.getByRole('button', { name: /^Stats$/ }).click();
     dialog = openDialog(page, 'Stats');
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('p', { hasText: /^Loading/i })).toBeHidden({

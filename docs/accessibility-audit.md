@@ -19,9 +19,15 @@ the recommended owner.
 | Severity | Count | Status |
 |----------|------:|--------|
 | Critical | 0 | — |
-| High | 4 | All fixed |
+| High | 7 | All fixed (4 in original pass, 3 in 2026-04-25 follow-up) |
 | Medium | 5 | 4 fixed, 1 deferred |
 | Low | 3 | 2 fixed, 1 documented |
+
+> The 2026-04-25 follow-up section at the bottom of this doc records three
+> additional High-severity findings surfaced by the Playwright + axe-core
+> regression suite (`tests/e2e/axe-aa.spec.ts`) that the manual source
+> review missed. All three are resolved; the suite now enforces the
+> previously-deferred rules.
 
 ## Findings
 
@@ -98,3 +104,79 @@ the recommended owner.
 | The file-import `<input type="file" hidden>` inside a styled `<label>` is conventional but some screen readers don't announce the underlying input as a button. If user testing reports confusion, switch to a real `<button>` that triggers `input.click()`. | `svelte-component-architect` |
 | Add an `aria-keyshortcuts="?"` attribute to the topbar Help button so AT exposes the shortcut alongside the visible label. Cheap polish, deferred. | `html-responsive-expert` |
 | Long-term: when sound effects ship, ensure they're optional (already settable via Sound toggle) and never carry semantic information that isn't also visible. | `svelte-component-architect` |
+
+---
+
+## 2026-04-25 — Follow-up after Playwright/axe E2E run
+
+After `svelte-qa-validator` wired up `tests/e2e/axe-aa.spec.ts` (axe-core 4.11
+across the initial view, Settings, Stats, and Keyboard Help), three additional
+violations surfaced that the manual source review above did not catch. The
+common thread: each issue is a structural ARIA pattern that's only obvious
+once an automated tool walks the live DOM. Manual review reads code; axe
+reads the rendered accessibility tree. All three have now been remediated and
+the corresponding `disableRules([...])` exemption has been removed from the
+spec file, so the suite now enforces these rules permanently.
+
+### Findings
+
+| # | Severity | Rule | Location | Description | Resolution |
+|---|----------|------|----------|-------------|------------|
+| 13 | High | axe `aria-prohibited-attr` (WCAG 4.1.2) | `PlayerSeat.svelte` | Dealer / Maker / Active-turn / Sitting-out badges were `<span>` elements with `aria-label="…"`. ARIA prohibits `aria-label` on a `<span>` that has no role — a generic span has no role to "name", so the attribute is dropped by AT. The original audit checked that the badges had labels but didn't check that the labels would actually be exposed. | Replaced `aria-label` with a visually-hidden label child (`<span class="sr-only">Dealer</span>`) plus the existing `aria-hidden="true"` glyph. Same compact visual look, label now sits on a real text node where it's allowed. |
+| 14 | High | axe `scrollable-region-focusable` (WCAG 2.1.1) | `ActionLog.svelte` | The recent-actions `<ol>` is `overflow-y: auto` with a 14rem cap, so on long log lists it scrolls — but a sighted keyboard-only user could not focus the list to scroll it (no `tabindex="0"`). The original audit treated the log as read-only content and missed that it becomes its own scroll container. | Added `tabindex="0"` (with `<!-- svelte-ignore -->` for the conflicting Svelte rule) so keyboard users can Tab into the list and scroll with arrow / page keys. The global `:focus-visible` ring in `reset.css` provides the visible indicator at 3:1 contrast — no extra CSS needed. |
+| 15 | High | axe `aria-hidden-focus` / hidden-modal-content (WCAG 4.1.2) | `Modal.svelte` | The dialog was rendered *inside* the backdrop `<div role="presentation" aria-hidden="true">`. `aria-hidden` cascades to descendants, so the dialog subtree (title, body, buttons) was effectively removed from the AT tree even though it was the foreground content. The original audit (finding #6) confirmed the backdrop was decorative but did not catch the cascade — manual reading didn't flag what axe's tree-walk did. | Restructured the DOM so the backdrop and the dialog are *siblings* under a non-semantic `.modal-root` wrapper. Dropped `aria-hidden="true"` from the backdrop entirely (Option B + Option A combined): `aria-modal="true"` on the dialog already inert-ifies the rest of the page for AT, so the backdrop just needs to be a click target with no AT role. The wrapper has no role and no aria-hidden. CSS updated to keep the same visual behaviour (full-bleed backdrop, centered dialog, click-outside-to-dismiss still works because the backdrop is now a sibling click target rather than an outer container). |
+
+### Why the original audit missed these
+
+- **#13 (aria-prohibited-attr):** The audit verified that each badge had a label
+  but did not verify that the *element type* could legally carry that label.
+  ARIA rules about which roles permit `aria-label` are notoriously easy to
+  miss — axe enforces them by walking the role table. Going forward, the
+  rule of thumb to add to `skills/accessibility.md` is: **`aria-label` on a
+  `<span>` requires `role="img"` or another role that allows accessible
+  names**; on bare spans, prefer `.sr-only` text.
+- **#14 (scrollable-region-focusable):** The audit treated the `<ol>` as
+  static text content. The "becomes scrollable when content overflows" case
+  was not considered. Going forward, the heuristic is: **any element with
+  `overflow: auto | scroll` (block direction or inline direction) needs
+  `tabindex="0"` unless its descendants are themselves focusable**.
+- **#15 (aria-hidden + dialog):** The audit *did* document (finding #6) that
+  the backdrop carried `aria-hidden="true"` but stopped at "verified the
+  backdrop is not in the AT tree". It did not check the contrapositive —
+  that `aria-hidden` cascades through `<div>` parents and was therefore
+  hiding the dialog *too*. Going forward: **never put `aria-hidden="true"`
+  on an ancestor of focusable / dialog content; make the backdrop a sibling
+  or drop the attribute entirely**.
+
+### Updates to existing entries
+
+- Finding #1 (Modal focus trap) — still valid; trap and focus-restore
+  unchanged. The DOM restructure preserves the trap (`bind:this={dialogEl}`
+  still points at the dialog).
+- Finding #6 (Modal backdrop AT tree) — superseded by #15. The earlier
+  resolution claim ("only the dialog itself appears in the AT tree —
+  verified") was incorrect; axe-core proved otherwise. Marked as
+  "re-opened and re-resolved by #15".
+
+### Files modified
+
+1. `src/lib/components/PlayerSeat.svelte` — badge label structure (#13).
+2. `src/lib/components/ActionLog.svelte` — scrollable `<ol>` `tabindex="0"` (#14).
+3. `src/lib/components/Modal.svelte` — backdrop / dialog restructured to be
+   siblings; `aria-hidden` removed from the backdrop; `.modal-root` wrapper
+   added; CSS positioning rebalanced; backdrop click handler simplified
+   (no longer needs target/currentTarget guard) (#15).
+4. `tests/e2e/axe-aa.spec.ts` — `KNOWN_DEFERRED_RULES` and the four
+   `.disableRules(...)` calls removed; the suite now enforces
+   `aria-prohibited-attr` and `scrollable-region-focusable` permanently.
+
+### Verified post-remediation (2026-04-25)
+
+- `npm run check` — 0 errors, 0 warnings.
+- `npm test` — 142 / 142 passing (no regressions).
+- `npm run build` — clean, single chunk, no warnings.
+- `npx playwright test tests/e2e/axe-aa.spec.ts` — 4 / 4 passing with the
+  two previously-disabled rules now enforced.
+- `npx playwright test` — 9 / 9 active e2e tests passing (2 are
+  intentionally skipped by their `test.skip` markers, unrelated to this
+  work).

@@ -50,13 +50,16 @@
     </h3>
     <span class="badges">
       {#if isDealer}
-        <span class="badge" aria-label="Dealer"><span aria-hidden="true">D</span></span>
+        <!-- Compact glyph for sighted users; sr-only word for AT. ARIA prohibits
+             aria-label on a bare <span> with no role, so we use visually-hidden
+             text (axe rule: aria-prohibited-attr). -->
+        <span class="badge"><span class="sr-only">Dealer</span><span aria-hidden="true">D</span></span>
       {/if}
       {#if isMaker}
-        <span class="badge maker" aria-label="Maker"><span aria-hidden="true">M</span></span>
+        <span class="badge maker"><span class="sr-only">Maker</span><span aria-hidden="true">M</span></span>
       {/if}
       {#if isActive}
-        <span class="badge active" aria-label="Active turn"><span aria-hidden="true">▶</span></span>
+        <span class="badge active"><span class="sr-only">Active turn</span><span aria-hidden="true">▶</span></span>
       {/if}
       {#if isSittingOut}
         <span class="badge muted">sitting out</span>

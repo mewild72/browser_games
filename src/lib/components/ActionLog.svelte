@@ -25,7 +25,13 @@
        in chronological reverse for sighted users. aria-live="polite" announces
        new entries without interrupting screen-reader speech. -->
   <div class="live" aria-live="polite" aria-atomic="true">{latest}</div>
-  <ol aria-label="Recent actions">
+  <!-- tabindex="0" lets keyboard users focus the list and scroll it with the
+       arrow keys / page keys (axe rule: scrollable-region-focusable). The
+       Svelte a11y rule "no noninteractive tabindex" is correct in general but
+       the axe rule it conflicts with takes precedence for scrollable regions:
+       a sighted keyboard user must be able to reach this scroll container. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <ol tabindex="0" aria-label="Recent actions">
     {#each recent as entry (entry.id)}
       <li>{entry.text}</li>
     {/each}

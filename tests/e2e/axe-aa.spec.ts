@@ -6,11 +6,6 @@ import { expect, test } from '@playwright/test';
  * AA. Fulfils the recommendation in `docs/accessibility-audit.md` to
  * add automated axe-core checks.
  *
- * Note on dialog locators: the Modal's backdrop carries
- * `aria-hidden="true"`, which axe also flags (correctly — the dialog
- * subtree is removed from the AT tree). We use CSS-based locators
- * here to wait for the dialog DOM, but axe still scans the live page.
- *
  * Owner: svelte-qa-validator
  */
 
@@ -21,36 +16,6 @@ const WCAG_TAGS = [
   'wcag21aa',
   'wcag22a',
   'wcag22aa',
-];
-
-/**
- * Known violations the manual audit (`docs/accessibility-audit.md`)
- * missed. Tracked here for the next remediation cycle by
- * accessibility-expert. Excluding them from the assertion lets THIS
- * suite serve as a regression gate for everything else; once the
- * underlying issues are fixed in the components, drop the rule from
- * this list and the suite enforces its absence forever.
- *
- *   1. `aria-prohibited-attr` — `PlayerSeat.svelte` puts
- *      `aria-label="Dealer" / "Maker" / "Active turn"` on bare
- *      `<span>` badges. A span with no role can't carry an
- *      aria-label. Recommended fix: switch to `<span role="img"
- *      aria-label="…">` or wrap the icon in a visible label and use
- *      `aria-hidden` on the glyph.
- *
- *   2. `scrollable-region-focusable` — `ActionLog.svelte`'s
- *      `<ol aria-label="Recent actions">` becomes scrollable on
- *      smaller viewports without a `tabindex="0"` to make it
- *      keyboard-reachable. Recommended fix: add `tabindex="0"` (and a
- *      `:focus-visible` ring) to the scrollable element.
- *
- * Both are serious-impact rules per axe-core 4.11. They are real
- * findings, not false positives; they are excluded here only because
- * fixing them is outside the QA-validator's lane.
- */
-const KNOWN_DEFERRED_RULES = [
-  'aria-prohibited-attr',
-  'scrollable-region-focusable',
 ];
 
 test.describe('axe-core WCAG AA', () => {
@@ -67,7 +32,6 @@ test.describe('axe-core WCAG AA', () => {
 
     const results = await new AxeBuilder({ page })
       .withTags(WCAG_TAGS)
-      .disableRules(KNOWN_DEFERRED_RULES)
       .analyze();
     expect(results.violations, formatViolations(results.violations)).toEqual([]);
   });
@@ -82,7 +46,6 @@ test.describe('axe-core WCAG AA', () => {
 
     const results = await new AxeBuilder({ page })
       .withTags(WCAG_TAGS)
-      .disableRules(KNOWN_DEFERRED_RULES)
       .analyze();
     expect(results.violations, formatViolations(results.violations)).toEqual([]);
 
@@ -103,7 +66,6 @@ test.describe('axe-core WCAG AA', () => {
 
     const results = await new AxeBuilder({ page })
       .withTags(WCAG_TAGS)
-      .disableRules(KNOWN_DEFERRED_RULES)
       .analyze();
     expect(results.violations, formatViolations(results.violations)).toEqual([]);
 
@@ -121,7 +83,6 @@ test.describe('axe-core WCAG AA', () => {
 
     const results = await new AxeBuilder({ page })
       .withTags(WCAG_TAGS)
-      .disableRules(KNOWN_DEFERRED_RULES)
       .analyze();
     expect(results.violations, formatViolations(results.violations)).toEqual([]);
 

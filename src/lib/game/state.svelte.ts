@@ -9,6 +9,7 @@
  * Owner: svelte-component-architect
  */
 
+import { untrack } from 'svelte';
 import type {
   Action,
   GameState,
@@ -68,12 +69,28 @@ export type LogEntry = {
  * that import the module without using it.
  */
 function buildInitialState(): GameState {
-  return startNewGame({ difficulty: readDifficultyPref() });
+  return startNewGame({
+    difficulty: readDifficultyPref(),
+    variants: readVariantsPref(),
+  });
 }
 
 function readDifficultyPref(): Difficulty {
   const pref = getPref('lastDifficulty');
   return pref ?? 'easy';
+}
+
+/**
+ * Read the persisted variant flags and merge them over the spec defaults.
+ *
+ * Merging (rather than replacing wholesale) ensures that when new variant
+ * fields are added to `Variants` in the future, an older persisted record
+ * does not leave a field `undefined` — the spec default fills the gap.
+ */
+function readVariantsPref(): Variants {
+  const pref = getPref('defaultVariants');
+  if (pref === undefined) return defaults;
+  return { ...defaults, ...pref };
 }
 
 function readBotDelayPref(): number {
@@ -103,8 +120,8 @@ export const game = $state<{ value: GameState }>({ value: buildInitialState() })
 /** Current difficulty. Persists to localStorage on change. */
 export const difficulty = $state<{ value: Difficulty }>({ value: readDifficultyPref() });
 
-/** Current variants in play. */
-export const variants = $state<{ value: Variants }>({ value: defaults });
+/** Current variants in play. Initialised from the persisted preference. */
+export const variants = $state<{ value: Variants }>({ value: readVariantsPref() });
 
 /** Bot delay in ms between bot decisions. */
 export const botDelayMs = $state<{ value: number }>({ value: readBotDelayPref() });
@@ -142,13 +159,23 @@ let nextLogId = 1;
  * Append a line to the action log.
  *
  * Exported so component-side helpers (e.g., "you played the J of spades")
- * can attribute log lines.
+ * can attribute log lines. The read-and-write pattern below is wrapped in
+ * `untrack` so callers running inside a `$effect` don't accidentally bind
+ * that effect to `actionLog` — without this, every effect that emits a
+ * log line would re-fire whenever any other line was appended (Bug #2).
  */
 export function logAction(text: string): void {
-  actionLog.value = [
-    ...actionLog.value,
-    { id: nextLogId++, text, timestamp: Date.now() },
-  ];
+  const entry = { id: nextLogId++, text, timestamp: Date.now() };
+  // Wrap in `untrack` so callers running inside a `$effect` don't tie
+  // that effect to the action log. The Svelte 5 self-invalidation hook
+  // (see `runtime.js` "untracked_writes") still propagates self-DIRTY
+  // through the calling effect when the write is observed during the
+  // CLEAN phase — this is fine in practice because the calling effects
+  // (`installEffects` log effect, action describers) are gated on
+  // phase changes, not on the action log itself.
+  untrack(() => {
+    actionLog.value = [...actionLog.value, entry];
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -183,42 +210,79 @@ export function installEffects(): void {
   });
 
   // Persist newly-completed hands.
+  //
+  // The effect's only reactive dependency is `game.value` (and, for the
+  // hand-complete branch, `game.value.phase` / `game.value.result`). Every
+  // other read — counters, sets, ids — is wrapped in `untrack` so that
+  // writes performed inside `persistHandIfNew` (which it must do, both to
+  // mark the hand persisted and to bump the index) never re-trigger this
+  // effect. Without `untrack`, the synchronous read of
+  // `persistedHandIds.value` would register a dependency that the
+  // subsequent write tears down, causing `effect_update_depth_exceeded`.
   $effect(() => {
     const state = game.value;
     if (state.phase !== 'hand-complete') return;
     const result = state.result;
-    void persistHandIfNew(result);
+    untrack(() => {
+      void persistHandIfNew(result);
+    });
   });
 
   // Persist game completion.
   $effect(() => {
     const state = game.value;
     if (state.phase !== 'game-complete') return;
-    if (persistedGameComplete.value) return;
-    void persistGameComplete(state.score, state.winner);
+    const score = state.score;
+    const winner = state.winner;
+    untrack(() => {
+      if (persistedGameComplete.value) return;
+      void persistGameComplete(score, winner);
+    });
   });
 
   // Reactive log lines based on phase changes.
+  //
+  // Gated by `lastAnnouncedHandId` / `lastAnnouncedGameComplete` so the
+  // effect emits one log line per *transition*, not per re-render. The
+  // log writes themselves are wrapped in `untrack` (inside `logAction`),
+  // but Svelte 5's self-invalidation hook can still re-fire a CLEAN
+  // effect when it observes a tracked write — see Bug #2. The guard
+  // here makes the work idempotent regardless of how many times the
+  // effect runs.
   $effect(() => {
     const state = game.value;
     if (state.phase === 'hand-complete') {
-      const r = state.result;
-      const makerSide = partnershipLabel(r.maker);
-      const defenderSide = partnershipLabel(r.maker === 'ns' ? 'ew' : 'ns');
-      const verdict = r.euchred
-        ? `${capitalizeWord(makerSide)} (makers) was euchred. ${capitalizeWord(defenderSide)} score ${r.pointsAwarded[r.maker === 'ns' ? 'ew' : 'ns']} points`
-        : `${capitalizeWord(makerSide)} take ${r.tricksWon.makers} tricks and score ${r.pointsAwarded[r.maker]} points`;
-      logAction(
-        `End of hand. ${verdict}. Score: ${state.score.ns} – ${state.score.ew}.`,
-      );
+      const handId = state.result.handId;
+      untrack(() => {
+        if (lastAnnouncedHandId === handId) return;
+        lastAnnouncedHandId = handId;
+        const r = state.result;
+        const makerSide = partnershipLabel(r.maker);
+        const defenderSide = partnershipLabel(r.maker === 'ns' ? 'ew' : 'ns');
+        const verdict = r.euchred
+          ? `${capitalizeWord(makerSide)} (makers) was euchred. ${capitalizeWord(defenderSide)} score ${r.pointsAwarded[r.maker === 'ns' ? 'ew' : 'ns']} points`
+          : `${capitalizeWord(makerSide)} take ${r.tricksWon.makers} tricks and score ${r.pointsAwarded[r.maker]} points`;
+        logAction(
+          `End of hand. ${verdict}. Score: ${state.score.ns} – ${state.score.ew}.`,
+        );
+      });
     } else if (state.phase === 'game-complete') {
-      const winner = partnershipLabel(state.winner);
-      logAction(
-        `Game over. ${capitalizeWord(winner)} win ${state.score.ns} – ${state.score.ew}.`,
-      );
+      untrack(() => {
+        if (lastAnnouncedGameComplete) return;
+        lastAnnouncedGameComplete = true;
+        const winner = partnershipLabel(state.winner);
+        logAction(
+          `Game over. ${capitalizeWord(winner)} win ${state.score.ns} – ${state.score.ew}.`,
+        );
+      });
     }
   });
 }
+
+/** Last hand-complete handId we've announced, to keep the log idempotent. */
+let lastAnnouncedHandId: HandResult['handId'] | null = null;
+/** Have we already announced game completion for the current game? */
+let lastAnnouncedGameComplete = false;
 
 async function runBotTurn(epoch: number): Promise<void> {
   // Drop the dispatch if a newer epoch has been queued.
@@ -379,8 +443,15 @@ async function persistHandIfNew(result: HandResult): Promise<void> {
   // Mark immediately to make the effect idempotent under multiple firings.
   persistedHandIds.value = new Set([...persistedHandIds.value, result.handId]);
   try {
-    const record = recordFromResult(currentGameDbId.value, handIndex.value, result);
-    await saveHand(record);
+    // `result` may carry references to engine state held inside `$state`
+    // proxies. Snapshot before handing the record to Dexie, whose
+    // `structuredClone` cannot serialise Svelte proxies (Bug #3).
+    const record = recordFromResult(
+      currentGameDbId.value,
+      handIndex.value,
+      result,
+    );
+    await saveHand($state.snapshot(record));
     handIndex.value++;
   } catch (err) {
     logAction(`Failed to persist hand: ${(err as Error).message}`);
@@ -396,13 +467,13 @@ async function persistGameComplete(
   persistedGameComplete.value = true;
   try {
     const endedAt = Date.now();
+    // Snapshot reactive sub-objects (`finalScore`) so Dexie's structured
+    // clone never sees a Svelte proxy. Primitives need no snapshot.
     await updateGame(currentGameDbId.value, {
       endedAt,
-      // durationMs requires the original startedAt; we read it back via getGame
-      // would add an extra round-trip; track startedAt locally instead.
       durationMs: gameStartedAt === null ? null : endedAt - gameStartedAt,
       winner,
-      finalScore,
+      finalScore: $state.snapshot(finalScore),
     });
   } catch (err) {
     logAction(`Failed to persist game completion: ${(err as Error).message}`);
@@ -438,19 +509,24 @@ export async function startNewGameSession(opts?: {
   handIndex.value = 0;
   persistedHandIds.value = new Set<string>();
   persistedGameComplete.value = false;
+  lastAnnouncedHandId = null;
+  lastAnnouncedGameComplete = false;
   actionLog.value = [];
   gameStartedAt = Date.now();
   botEpoch++;
 
   logAction(`New ${newDifficulty} game started. Dealer: ${state.dealer}.`);
 
-  // Persist the new game record.
+  // Persist the new game record. Snapshot the reactive sub-objects
+  // (`variants`) before passing to storage — Dexie uses `structuredClone`
+  // internally and cannot clone Svelte `$state` proxies, which would
+  // throw `DataCloneError` (Bug #3).
   try {
     const id = await saveGame({
       engineGameId: state.gameId,
       gameKind: 'euchre',
       difficulty: newDifficulty,
-      variants: newVariants,
+      variants: $state.snapshot(newVariants) as Variants,
       deckCount: 1,
       startedAt: gameStartedAt,
       endedAt: null,
@@ -556,9 +632,19 @@ export function setBotDelay(ms: number): void {
   writeBotDelayPref(clamped);
 }
 
-/** Update the variants used by the next game. (Does not change the live game.) */
+/**
+ * Update the variants used by the next game. Does not change the live
+ * game's variants — the engine snapshots them at game start.
+ *
+ * Persists the new variants to localStorage via the typed `defaultVariants`
+ * pref so toggles survive a reload. We snapshot before persisting because
+ * `next` may itself be a Svelte `$state` proxy from the SettingsModal —
+ * `structuredClone` (used internally by some storage paths) cannot clone
+ * proxies, and `JSON.stringify` over a proxy is also unreliable.
+ */
 export function setVariants(next: Variants): void {
   variants.value = next;
+  setPref('defaultVariants', $state.snapshot(next) as Variants);
 }
 
 /** Re-export so components can ask "is it the human's turn?" without re-importing. */

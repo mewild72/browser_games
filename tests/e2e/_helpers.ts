@@ -30,12 +30,6 @@ export function openDialog(page: Page, title: string): Locator {
  *   2. Call <suit> — round 2 stuck dealer
  *   3. Discard a card — dealer-discard phase
  *   4. Play a card — playing phase, human's turn
- *
- * `force: true` bypasses Playwright's pointer-interception guard. The
- * action-log column visually overlaps the play / bidding areas at
- * common viewport widths (CSS issue forwarded to css-expert in the QA
- * report); without `force: true`, every click would retry until
- * timeout.
  */
 export async function playHandToCompletion(
   page: Page,
@@ -52,7 +46,7 @@ export async function playHandToCompletion(
     Date.now() < deadline
   ) {
     if (await passButton.isVisible().catch(() => false)) {
-      await passButton.evaluate((el) => (el as HTMLButtonElement).click());
+      await passButton.click();
     } else if (
       await page
         .getByRole('button', { name: /^Call/ })
@@ -64,7 +58,7 @@ export async function playHandToCompletion(
       await page
         .getByRole('button', { name: /^Call/ })
         .first()
-        .evaluate((el) => (el as HTMLButtonElement).click());
+        .click();
     } else if (
       await page
         .locator('.bidding .discard-list button.card.playable')
@@ -76,7 +70,7 @@ export async function playHandToCompletion(
       await page
         .locator('.bidding .discard-list button.card.playable')
         .first()
-        .evaluate((el) => (el as HTMLButtonElement).click());
+        .click();
     } else if (
       await page
         .locator('.south-seat button.card.playable')
@@ -88,7 +82,7 @@ export async function playHandToCompletion(
       await page
         .locator('.south-seat button.card.playable')
         .first()
-        .evaluate((el) => (el as HTMLButtonElement).click());
+        .click();
     }
     // Yield so the bot loop can run.
     await page.waitForTimeout(80);

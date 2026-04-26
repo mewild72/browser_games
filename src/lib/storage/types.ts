@@ -192,6 +192,12 @@ export type PrefsMap = {
   darkMode: boolean;
   soundOn: boolean;
   lastDifficulty: Difficulty;
+  /**
+   * User's preferred variant flags. Persisted so toggles in the Settings
+   * modal survive a reload — without this key, `setVariants` would only
+   * update the in-memory rune and defaults would return on next load.
+   */
+  defaultVariants: Variants;
 };
 
 /* ------------------------------------------------------------------ */

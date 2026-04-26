@@ -325,14 +325,26 @@
   .grid {
     position: relative;
     display: grid;
-    grid-template-columns: 1fr 2fr 1fr;
-    grid-template-rows: auto auto auto auto auto;
+    /*
+      Five rectangular columns: log | west | center | east | panel.
+      Previous layout used a non-rectangular `log` area (rows 2,4,5 in
+      column 1 with `west` interrupting at row 3) which CSS Grid
+      silently rejects, allowing the log to render over the play / panel
+      areas at common viewport widths and intercept pointer events.
+      Each named area below now forms a true rectangle.
+    */
+    grid-template-columns:
+      minmax(11rem, 0.85fr)
+      minmax(0, 1fr)
+      minmax(0, 2fr)
+      minmax(0, 1fr)
+      minmax(11rem, 0.85fr);
+    grid-template-rows: auto auto auto auto;
     grid-template-areas:
-      'score   score    score'
-      'log     north    panel'
-      'west    center   east'
-      'log     south    panel'
-      'log     log      panel';
+      'score   score   score    score   score'
+      'log     north   north    north   panel'
+      'log     west    center   east    panel'
+      'log     south   south    south   panel';
     gap: var(--space-4);
     max-inline-size: 80rem;
     margin-inline: auto;
@@ -393,6 +405,16 @@
     }
     .grid {
       gap: var(--space-3);
+      /* Slightly narrower side rails so the center has more room. */
+      grid-template-columns:
+        minmax(10rem, 0.7fr)
+        minmax(0, 1fr)
+        minmax(0, 2fr)
+        minmax(0, 1fr)
+        minmax(10rem, 0.7fr);
+    }
+    .log-area {
+      max-block-size: 28rem;
     }
   }
 
@@ -400,6 +422,7 @@
   @media (max-width: 899px) {
     .grid {
       grid-template-columns: 1fr;
+      grid-template-rows: auto auto auto auto auto auto auto auto;
       grid-template-areas:
         'score'
         'north'
@@ -417,11 +440,17 @@
     .center-area {
       min-block-size: 9rem;
     }
+    .log-area {
+      max-block-size: 14rem;
+    }
   }
 
   @media (max-width: 699px) {
     .table {
       padding: var(--space-3) var(--space-2);
+    }
+    .log-area {
+      max-block-size: 10rem;
     }
   }
 </style>
