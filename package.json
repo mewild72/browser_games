@@ -13,7 +13,8 @@
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",
-    "lockfix": "rm -rf node_modules package-lock.json && npm install"
+    "lockfix": "rm -rf node_modules package-lock.json && npm install",
+    "regenerate-art": "python3 scripts/generate_card_art.py && python3 scripts/optimize_card_art.py"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.2",

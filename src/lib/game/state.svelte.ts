@@ -28,6 +28,7 @@ import {
   setPref,
   updateGame,
 } from '@/lib/storage';
+import { DEFAULT_CARD_BACK_ID } from '@/lib/cards/art';
 import {
   HUMAN_SEAT,
   currentBotSeat,
@@ -125,6 +126,18 @@ export const variants = $state<{ value: Variants }>({ value: readVariantsPref() 
 
 /** Bot delay in ms between bot decisions. */
 export const botDelayMs = $state<{ value: number }>({ value: readBotDelayPref() });
+
+/**
+ * Active card-back id. Consumed by `<Card>` for face-down rendering.
+ *
+ * Initialised from the persisted `cardBack` UI pref and falls back to the
+ * manifest's default (currently `'classic-blue'`) when no pref is stored.
+ * Updated via `setCardBack`, which mirrors the change to localStorage so
+ * the choice survives a reload.
+ */
+export const selectedBackId = $state<{ value: string }>({
+  value: getPref('cardBack') ?? DEFAULT_CARD_BACK_ID,
+});
 
 /** Bots keyed by seat. The human seat is intentionally absent. */
 const bots = $state<{ value: Partial<Record<Seat, Bot>> }>({
@@ -630,6 +643,18 @@ export function setBotDelay(ms: number): void {
   const clamped = Math.max(0, Math.min(5000, Math.floor(ms)));
   botDelayMs.value = clamped;
   writeBotDelayPref(clamped);
+}
+
+/**
+ * Update the active card-back. Persists to localStorage so the choice
+ * survives a reload. The id is taken on faith — `<Card>` falls back to
+ * its placeholder back-pattern when the id resolves to no bundled URL,
+ * so a stale preference (e.g. a back removed between releases) degrades
+ * gracefully rather than crashing.
+ */
+export function setCardBack(id: string): void {
+  selectedBackId.value = id;
+  setPref('cardBack', id);
 }
 
 /**

@@ -81,3 +81,12 @@ Items that aren't tied to a dependency version but track planned work:
 **Fix:** `npm run lockfix` — wipes `node_modules` and `package-lock.json`, then runs a clean `npm install` so the lockfile re-resolves with all platform variants.
 
 **When to run:** After every `npm install <pkg>`, before committing the lockfile change. Cheaper to run once locally than to chase CI failures.
+
+---
+
+## Card art workflow
+
+- Source images live outside the repo at `/home/ticketscene/card_faces/cards/`
+- `scripts/generate_card_art.py` produces PNG intermediates in `src/assets/cards/{faces,backs}/` (gitignored)
+- `scripts/optimize_card_art.py` produces WebP under `src/assets/cards/optimized/` (committed)
+- Run both via `npm run regenerate-art` whenever the source images change

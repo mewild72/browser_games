@@ -27,3 +27,10 @@ dist-ssr
 playwright-report/
 test-results/
 coverage/
+
+# Intermediate card art — regenerable from /home/ticketscene/card_faces/cards/
+# via `npm run regenerate-art`. The optimized WebP under src/assets/cards/optimized/
+# IS committed; only the PNG intermediates and their manifest are excluded.
+src/assets/cards/faces/*.png
+src/assets/cards/backs/*.png
+src/assets/cards/manifest.json

@@ -12,11 +12,14 @@
   import {
     botDelayMs,
     difficulty,
+    selectedBackId,
     setBotDelay,
+    setCardBack,
     setDifficulty,
     setVariants,
     variants,
   } from '@/lib/game/state.svelte';
+  import { cardBacks } from '@/lib/cards/art';
   import { exportAll, getPref, importAll, setPref } from '@/lib/storage';
 
   type Props = {
@@ -94,6 +97,11 @@
     darkMode = next;
     setPref('darkMode', next);
   }
+
+  function onCardBackChange(e: Event): void {
+    const target = e.target as HTMLSelectElement;
+    setCardBack(target.value);
+  }
 </script>
 
 <Modal {open} {onclose} title="Settings">
@@ -115,6 +123,28 @@
       <legend>Display & sound</legend>
       <Toggle value={darkMode} label="Dark mode" onchange={onDarkChange} />
       <Toggle value={soundOn} label="Sound" onchange={onSoundChange} />
+      <!--
+        Card-back picker — single-choice from a manifest-driven list, so a
+        <select> is the right control (Toggle is booleans-only). When the
+        manifest lists no backs the picker collapses to a muted line so
+        the layout doesn't show a phantom empty control.
+      -->
+      {#if cardBacks.length > 0}
+        <label class="select">
+          <span>Card back</span>
+          <select
+            class="card-back-select"
+            value={selectedBackId.value}
+            onchange={onCardBackChange}
+          >
+            {#each cardBacks as back (back.id)}
+              <option value={back.id}>{back.label}</option>
+            {/each}
+          </select>
+        </label>
+      {:else}
+        <p class="muted">No card backs available.</p>
+      {/if}
     </fieldset>
 
     <fieldset class="grp">
@@ -199,6 +229,27 @@
   .muted {
     color: var(--text-muted);
     font-size: var(--font-size-sm);
+  }
+  .select {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    font-size: var(--font-size-sm);
+  }
+  .select select {
+    flex: 0 1 auto;
+    min-inline-size: 11rem;
+    padding: var(--space-1) var(--space-2);
+    background-color: var(--bg-surface);
+    color: var(--text-on-felt);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    font: inherit;
+  }
+  .select select:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
   .range {
     display: flex;

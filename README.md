@@ -43,6 +43,7 @@ npm run dev          # http://localhost:5173
 | `npm run test:watch` | Run unit tests in watch mode |
 | `npm run test:e2e` | Run end-to-end tests (Playwright) |
 | `npm run lockfix` | Regenerate `package-lock.json` from scratch (run after `npm install <pkg>` to restore cross-platform optional deps) |
+| `npm run regenerate-art` | Regenerate PNG intermediates and optimized WebP cards from the source images (requires Python 3 + Pillow). |
 
 ## Distribution
 

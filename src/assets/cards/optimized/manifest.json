@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "faces": {
+    "default": {
+      "label": "Standard",
+      "format": "webp",
+      "path": "faces/"
+    }
+  },
+  "backs": [
+    {
+      "id": "classic-blue",
+      "label": "Classic Blue",
+      "path": "backs/classic-blue.webp"
+    },
+    {
+      "id": "classic-red",
+      "label": "Classic Red",
+      "path": "backs/classic-red.webp"
+    },
+    {
+      "id": "forest-green",
+      "label": "Forest Green",
+      "path": "backs/forest-green.webp"
+    },
+    {
+      "id": "midnight-black",
+      "label": "Midnight Black",
+      "path": "backs/midnight-black.webp"
+    },
+    {
+      "id": "royal-purple",
+      "label": "Royal Purple",
+      "path": "backs/royal-purple.webp"
+    }
+  ]
+}
