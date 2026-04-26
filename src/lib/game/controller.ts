@@ -51,11 +51,21 @@ export type StartNewGameOpts = {
 };
 
 /**
- * Outcome of `dispatchUserAction` — separates legality failures (caller
- * surfaces a UI error) from successful state advances.
+ * Outcome of `dispatchUserAction` / `dispatchBot` — separates legality
+ * failures (caller surfaces a UI error) from successful state advances.
+ *
+ * The successful variant also carries the action that produced the new
+ * state and the previous state so that screen-reader announcement helpers
+ * can describe what just happened (e.g. "North orders up Hearts" instead
+ * of the coarse "north acted in bidding-round-1").
  */
 export type DispatchOutcome =
-  | { readonly ok: true; readonly state: GameState }
+  | {
+      readonly ok: true;
+      readonly state: GameState;
+      readonly action: Action;
+      readonly prevState: GameState;
+    }
   | { readonly ok: false; readonly reason: string };
 
 /* ------------------------------------------------------------------ */
@@ -135,7 +145,7 @@ export function dispatchUserAction(
   if (!result.ok) {
     return { ok: false, reason: result.error.message };
   }
-  return { ok: true, state: result.value };
+  return { ok: true, state: result.value, action, prevState: state };
 }
 
 /* ------------------------------------------------------------------ */
@@ -170,7 +180,7 @@ export async function dispatchBot(
   if (!next.ok) {
     return { ok: false, reason: next.error.message };
   }
-  return { ok: true, state: next.value };
+  return { ok: true, state: next.value, action, prevState: state };
 }
 
 /**

@@ -1,0 +1,39 @@
+/*
+ * Reduced-motion overrides.
+ *
+ * Honors `prefers-reduced-motion: reduce` per WCAG 2.2 SC 2.3.3 / OS-level
+ * user preference. The rule is loaded LAST among the styles imports in
+ * main.ts so its specificity-equal selectors win against earlier files.
+ *
+ * `!important` is used here intentionally: this is the canonical pattern
+ * recommended by MDN for honoring the user's accessibility preference,
+ * and we explicitly want to override per-component transitions and
+ * animations defined in scoped <style> blocks.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Forced-colors (Windows High Contrast Mode) — let the system handle
+ * surface color, but keep custom indicators (badges, focus, suit) visible
+ * via explicit borders. */
+@media (forced-colors: active) {
+  .pill,
+  .panel,
+  .panel-strong {
+    border: 1px solid currentColor;
+  }
+  :where(:focus-visible) {
+    outline: 2px solid Highlight;
+  }
+}

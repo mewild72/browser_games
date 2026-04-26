@@ -21,39 +21,63 @@
   let { turnedCard, kitty, turnedFaceDown = false }: Props = $props();
 </script>
 
-<div class="kitty" aria-label="Kitty">
-  <div class="stack" aria-label="Kitty stack">
-    {#each kitty as _card, i (i)}
-      <CardView card={undefined} faceDown ariaLabel="Face-down kitty card" />
-    {/each}
-    {#if kitty.length === 0}
-      <span class="empty">(empty)</span>
-    {/if}
-  </div>
-  <div class="turned">
-    {#if turnedCard !== undefined}
+<section class="kitty" aria-labelledby="kitty-heading">
+  <h3 id="kitty-heading" class="sr-only">
+    Kitty, {kitty.length} {kitty.length === 1 ? 'card' : 'cards'}
+  </h3>
+  {#if kitty.length === 0}
+    <p class="empty">(empty)</p>
+  {:else}
+    <ul class="stack" aria-label={`Kitty stack, ${kitty.length} cards`}>
+      {#each kitty as _card, i (i)}
+        <li>
+          <CardView card={undefined} faceDown ariaLabel="Face-down kitty card" />
+        </li>
+      {/each}
+    </ul>
+  {/if}
+  {#if turnedCard !== undefined}
+    <div class="turned">
       <CardView
         card={turnedCard}
         faceDown={turnedFaceDown}
         ariaLabel={turnedFaceDown ? 'Turned card, face down' : `Turned card: ${turnedCard.rank} of ${turnedCard.suit}`}
       />
-    {/if}
-  </div>
-</div>
+    </div>
+  {/if}
+</section>
 
 <style>
   .kitty {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-2, 0.5rem);
+    gap: var(--space-3);
   }
   .stack {
+    list-style: none;
+    margin: 0;
+    padding: 0;
     display: flex;
-    gap: 2px;
+    /* Slight overlap so the kitty looks stacked rather than spread. */
+    gap: calc(var(--card-w) * -0.6);
+  }
+  .stack li {
+    display: inline-flex;
+  }
+  /* Tilt each card a touch differently for that lived-in deck feel. */
+  .stack li:nth-child(1) { transform: rotate(-3deg); }
+  .stack li:nth-child(2) { transform: rotate(1deg) translateY(-2px); }
+  .stack li:nth-child(3) { transform: rotate(-1deg); }
+  .stack li:nth-child(4) { transform: rotate(2deg) translateY(-1px); }
+  .turned {
+    /* The turned card sits proudly next to the stack. */
+    margin-block-start: var(--space-2);
   }
   .empty {
+    margin: 0;
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: var(--font-size-sm);
+    font-style: italic;
   }
 </style>

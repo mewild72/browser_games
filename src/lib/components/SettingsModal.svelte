@@ -26,7 +26,9 @@
 
   let { open, onclose }: Props = $props();
 
-  let darkMode = $state(getPref('darkMode') ?? false);
+  // Default to dark mode when no pref is stored — matches the visual
+  // default applied in main.ts (the felt/dark theme is the canonical look).
+  let darkMode = $state(getPref('darkMode') ?? true);
   let soundOn = $state(getPref('soundOn') ?? false);
   let importStatus = $state('');
 
@@ -95,89 +97,134 @@
 </script>
 
 <Modal {open} {onclose} title="Settings">
-  <fieldset class="grp">
-    <legend>Difficulty</legend>
-    <label><input type="radio" name="diff" value="easy" checked={difficulty.value === 'easy'} onchange={() => pickDifficulty('easy')} /> Easy</label>
-    <label><input type="radio" name="diff" value="medium" checked={difficulty.value === 'medium'} onchange={() => pickDifficulty('medium')} /> Medium</label>
-    <label class="disabled"><input type="radio" name="diff" value="hard" disabled /> Hard <span class="muted">(coming soon)</span></label>
-  </fieldset>
+  <!--
+    Settings is a preferences form. Each control persists on change (no
+    explicit submit), so the <form> has no action/method and submission is
+    suppressed via onsubmit preventDefault. <fieldset>/<legend> groups the
+    radio set; toggle / range controls are siblings.
+  -->
+  <form class="settings-form" onsubmit={(e) => e.preventDefault()}>
+    <fieldset class="grp">
+      <legend>Difficulty</legend>
+      <label><input type="radio" name="diff" value="easy" checked={difficulty.value === 'easy'} onchange={() => pickDifficulty('easy')} /> Easy</label>
+      <label><input type="radio" name="diff" value="medium" checked={difficulty.value === 'medium'} onchange={() => pickDifficulty('medium')} /> Medium</label>
+      <label class="disabled"><input type="radio" name="diff" value="hard" disabled /> Hard <span class="muted">(coming soon)</span></label>
+    </fieldset>
 
-  <Toggle value={darkMode} label="Dark mode" onchange={onDarkChange} />
-  <Toggle value={soundOn} label="Sound" onchange={onSoundChange} />
-  <Toggle
-    value={variants.value.stickTheDealer}
-    label="Stick the dealer"
-    onchange={setStickDealer}
-  />
-  <Toggle
-    value={variants.value.allowGoingAlone}
-    label="Going alone"
-    onchange={setAllowAlone}
-  />
+    <fieldset class="grp">
+      <legend>Display & sound</legend>
+      <Toggle value={darkMode} label="Dark mode" onchange={onDarkChange} />
+      <Toggle value={soundOn} label="Sound" onchange={onSoundChange} />
+    </fieldset>
 
-  <label class="range">
-    <span>Bot delay: {botDelayMs.value} ms</span>
-    <input
-      type="range"
-      min="0"
-      max="2000"
-      step="50"
-      value={botDelayMs.value}
-      oninput={(e) => setBotDelay(Number((e.target as HTMLInputElement).value))}
-    />
-  </label>
+    <fieldset class="grp">
+      <legend>Variants</legend>
+      <Toggle
+        value={variants.value.stickTheDealer}
+        label="Stick the dealer"
+        onchange={setStickDealer}
+      />
+      <Toggle
+        value={variants.value.allowGoingAlone}
+        label="Going alone"
+        onchange={setAllowAlone}
+      />
+    </fieldset>
 
-  <div class="data-controls">
-    <button type="button" onclick={onExport}>Export stats</button>
-    <label class="import-btn">
-      Import stats
-      <input type="file" accept="application/json" onchange={onImport} hidden />
+    <label class="range" for="bot-delay">
+      <span>Bot delay: {botDelayMs.value} ms</span>
+      <input
+        id="bot-delay"
+        type="range"
+        min="0"
+        max="2000"
+        step="50"
+        value={botDelayMs.value}
+        oninput={(e) => setBotDelay(Number((e.target as HTMLInputElement).value))}
+      />
     </label>
-  </div>
-  {#if importStatus !== ''}<p class="muted">{importStatus}</p>{/if}
-  <p class="muted">
-    Clear-all-stats is not yet wired (no clear-all helper in the storage layer).
-  </p>
+
+    <div class="data-controls" role="group" aria-label="Stats data">
+      <button type="button" class="btn btn-secondary" onclick={onExport}>Export stats</button>
+      <label class="btn btn-secondary import-btn">
+        Import stats
+        <input type="file" accept="application/json" onchange={onImport} hidden />
+      </label>
+    </div>
+    {#if importStatus !== ''}<p class="muted" role="status" aria-live="polite">{importStatus}</p>{/if}
+    <p class="muted">
+      Clear-all-stats is not yet wired (no clear-all helper in the storage layer).
+    </p>
+  </form>
 </Modal>
 
 <style>
-  .grp {
-    border: 1px solid hsla(0, 0%, 100%, 0.2);
-    border-radius: 0.4rem;
-    padding: var(--space-2, 0.5rem);
+  .settings-form {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-4);
+  }
+  .grp {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4) var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    background-color: hsla(0, 0%, 0%, 0.18);
   }
   .grp legend {
-    padding: 0 0.4rem;
-    font-size: 0.85rem;
+    padding: 0 var(--space-2);
+    font-size: var(--font-size-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     color: var(--text-muted);
+    font-weight: 700;
+  }
+  .grp label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);
+  }
+  .grp input[type="radio"] {
+    accent-color: var(--accent);
+    inline-size: 1rem;
+    block-size: 1rem;
   }
   label.disabled {
-    color: var(--text-muted);
+    color: var(--text-disabled);
   }
   .muted {
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: var(--font-size-sm);
   }
   .range {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);
   }
+  .range input[type="range"] {
+    inline-size: 100%;
+    accent-color: var(--accent);
+    block-size: 1.5rem;
+  }
+  .range input[type="range"]:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
   .data-controls {
     display: flex;
-    gap: var(--space-2, 0.5rem);
+    gap: var(--space-2);
     align-items: center;
+    flex-wrap: wrap;
   }
-  .data-controls button,
   .import-btn {
-    padding: 0.4rem 0.8rem;
-    border-radius: 0.4rem;
-    border: 1px solid hsl(0, 0%, 60%);
-    background-color: hsla(0, 0%, 100%, 0.1);
-    color: var(--text-primary);
+    /* The .btn .btn-secondary classes handle visuals; this just lets the
+       label-as-button stay clickable and labelable. */
     cursor: pointer;
   }
 </style>

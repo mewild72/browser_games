@@ -203,13 +203,19 @@ export function installEffects(): void {
     const state = game.value;
     if (state.phase === 'hand-complete') {
       const r = state.result;
-      const sideLabel = r.maker === 'ns' ? 'NS' : 'EW';
+      const makerSide = partnershipLabel(r.maker);
+      const defenderSide = partnershipLabel(r.maker === 'ns' ? 'ew' : 'ns');
       const verdict = r.euchred
-        ? `${sideLabel} (makers) was euchred — defenders +${r.pointsAwarded[r.maker === 'ns' ? 'ew' : 'ns']}`
-        : `${sideLabel} won ${r.tricksWon.makers} tricks — +${r.pointsAwarded[r.maker]}`;
-      logAction(`Hand complete: ${verdict}. Score NS ${state.score.ns} – EW ${state.score.ew}.`);
+        ? `${capitalizeWord(makerSide)} (makers) was euchred. ${capitalizeWord(defenderSide)} score ${r.pointsAwarded[r.maker === 'ns' ? 'ew' : 'ns']} points`
+        : `${capitalizeWord(makerSide)} take ${r.tricksWon.makers} tricks and score ${r.pointsAwarded[r.maker]} points`;
+      logAction(
+        `End of hand. ${verdict}. Score: ${state.score.ns} – ${state.score.ew}.`,
+      );
     } else if (state.phase === 'game-complete') {
-      logAction(`Game complete. Winner: ${state.winner.toUpperCase()} (${state.score.ns}–${state.score.ew}).`);
+      const winner = partnershipLabel(state.winner);
+      logAction(
+        `Game over. ${capitalizeWord(winner)} win ${state.score.ns} – ${state.score.ew}.`,
+      );
     }
   });
 }
@@ -227,27 +233,143 @@ async function runBotTurn(epoch: number): Promise<void> {
     logAction(`Bot error (${seat}): ${result.reason}`);
     return;
   }
-  describeAction(state, seat);
+  describeBotAction(result.prevState, result.action, seat);
   game.value = result.state;
+  // Announce post-action state transitions (trick winners, phase changes,
+  // turn updates, score deltas). Pass both states so transitions can be
+  // detected by diffing.
+  announceTransitions(result.prevState, result.state);
 }
 
-function describeAction(prev: GameState, seat: Seat): void {
-  // Best-effort log entry. The state has already advanced by the time we
-  // log, but we have access to the seat that just acted; produce a coarse
-  // description from the prior phase.
-  switch (prev.phase) {
+/**
+ * Render an action into a human-readable announcement.
+ *
+ * Used for both bot actions (called from `runBotTurn`) and post-hoc
+ * narration. The tone is deliberately conversational so the live region
+ * is pleasant to listen to.
+ */
+function describeBotAction(prev: GameState, action: Action, seat: Seat): void {
+  const seatName = capitalizeSeat(seat);
+  switch (action.type) {
+    case 'pass':
+      logAction(`${seatName} passes.`);
+      break;
+    case 'orderUp': {
+      // The turned card's suit was the trump being ordered up. Only valid
+      // in bidding-round-1.
+      if (prev.phase === 'bidding-round-1') {
+        logAction(
+          `${seatName} orders up ${prev.turnedCard.suit}${action.alone ? ' (alone)' : ''}.`,
+        );
+      } else {
+        logAction(`${seatName} orders up${action.alone ? ' (alone)' : ''}.`);
+      }
+      break;
+    }
+    case 'callTrump':
+      logAction(
+        `${seatName} calls ${action.suit}${action.alone ? ' (alone)' : ''}.`,
+      );
+      break;
+    case 'discardKitty':
+      // The dealer's discard is private — don't reveal the card a bot
+      // discarded. Just announce that it happened.
+      logAction(`${seatName} discards a card.`);
+      break;
+    case 'playCard':
+      logAction(
+        `${seatName} plays the ${action.card.rank} of ${action.card.suit}.`,
+      );
+      break;
+  }
+}
+
+function capitalizeSeat(seat: Seat): string {
+  return capitalizeWord(seat);
+}
+
+function capitalizeWord(word: string): string {
+  if (word.length === 0) return word;
+  return word[0]!.toUpperCase() + word.slice(1);
+}
+
+function partnershipLabel(p: 'ns' | 'ew'): string {
+  return p === 'ns' ? 'your team' : 'the opponents';
+}
+
+/**
+ * Announce screen-reader-relevant transitions between two states.
+ *
+ * Called after every successful action (bot or human) so trick winners,
+ * phase changes, score updates, and turn changes are conveyed to AT
+ * users via the polite live region. Sighted users see the same
+ * messages in the action log.
+ */
+function announceTransitions(prev: GameState, next: GameState): void {
+  // Trick complete: completedTricks grew by one.
+  if (
+    prev.phase === 'playing' &&
+    next.phase === 'playing' &&
+    next.completedTricks.length > prev.completedTricks.length
+  ) {
+    const winningTrick = next.completedTricks[next.completedTricks.length - 1];
+    if (winningTrick !== undefined) {
+      logAction(
+        `${capitalizeSeat(winningTrick.winner)} wins the trick (makers ${next.tricksWon.makers}, defenders ${next.tricksWon.defenders}).`,
+      );
+    }
+  }
+
+  // Phase transitions worth narrating.
+  if (prev.phase !== next.phase) {
+    if (prev.phase === 'bidding-round-1' && next.phase === 'bidding-round-2') {
+      logAction(`Bidding round 2 begins. The ${prev.turnedCard.suit} is rejected.`);
+    } else if (
+      (prev.phase === 'bidding-round-1' ||
+        prev.phase === 'bidding-round-2' ||
+        prev.phase === 'dealer-discard') &&
+      next.phase === 'playing'
+    ) {
+      logAction(
+        `Trump is ${next.trump}. ${capitalizeSeat(next.makerSeat)} (${partnershipLabel(next.maker)}) is the maker${next.alone ? ' going alone' : ''}.`,
+      );
+    }
+    // hand-complete and game-complete are already announced by the
+    // existing $effect that watches game.value (kept for redundancy when
+    // a hand ends as a side-effect of e.g. user "Next hand" dispatch).
+  }
+
+  // Whose-turn announcement: only when the active seat changes within an
+  // ongoing phase. (Phase transitions above cover the cross-phase case.)
+  const prevTurn = activeSeat(prev);
+  const nextTurn = activeSeat(next);
+  if (
+    prev.phase === next.phase &&
+    prevTurn !== null &&
+    nextTurn !== null &&
+    prevTurn !== nextTurn
+  ) {
+    // Be quiet during bidding rounds — every bot pass would otherwise
+    // produce two log lines (the action + the turn change). Restrict
+    // turn callouts to the playing phase, which is where they matter
+    // most for screen-reader users tracking the rotation.
+    if (next.phase === 'playing') {
+      logAction(`${capitalizeSeat(nextTurn)}'s turn.`);
+    }
+  }
+}
+
+/** Identify the seat whose decision is awaited in a state, or null. */
+function activeSeat(s: GameState): Seat | null {
+  switch (s.phase) {
     case 'bidding-round-1':
     case 'bidding-round-2':
-      logAction(`${seat} acted in ${prev.phase}.`);
-      break;
-    case 'dealer-discard':
-      logAction(`${seat} discarded.`);
-      break;
     case 'playing':
-      logAction(`${seat} played a card.`);
-      break;
+      return s.turn;
+    case 'dealer-discard':
+      return s.dealer;
     default:
-      break;
+      return null;
   }
 }
 
@@ -350,13 +472,16 @@ export async function startNewGameSession(opts?: {
  * the reason is appended to the action log and the state is unchanged.
  */
 export function dispatchUser(action: Action): boolean {
-  const result = dispatchUserAction(game.value, action);
+  const prev = game.value;
+  const result = dispatchUserAction(prev, action);
   if (!result.ok) {
     logAction(`Illegal action: ${result.reason}`);
     return false;
   }
-  describeUserAction(game.value, action);
+  describeUserAction(prev, action);
   game.value = result.state;
+  // Mirror the bot path: surface trick-winner / phase / turn transitions.
+  announceTransitions(prev, result.state);
   return true;
 }
 
@@ -403,7 +528,13 @@ export function dispatchNextHand(): void {
   if (state.phase !== 'hand-complete') return;
   const next = nextHand(state, defaultRng());
   game.value = next;
-  logAction(`Next hand dealt. Dealer: ${next.phase === 'bidding-round-1' ? next.dealer : '?'}.`);
+  if (next.phase === 'bidding-round-1') {
+    logAction(
+      `Next hand dealt. Dealer: ${capitalizeSeat(next.dealer)}. Turned card: ${next.turnedCard.rank} of ${next.turnedCard.suit}.`,
+    );
+  } else {
+    logAction(`Next hand dealt.`);
+  }
 }
 
 /**

@@ -1,0 +1,55 @@
+/*
+ * Global responsive breakpoints.
+ *
+ * Desktop is the default (no media query, >= 1100px effective).
+ * Components use these breakpoints to adjust the table grid and card sizes.
+ *
+ * Breakpoint reasoning:
+ *   - 1099px: tighter spacing, keep horizontal seat layout
+ *   - 899px:  drop to vertical-stack for the table grid
+ *   - 699px:  smaller cards, single-column panels
+ *   - 379px:  last resort phone-portrait, minimum spacing
+ *
+ * 320px is not a primary target but the layout doesn't break.
+ */
+
+/* Tablet / medium */
+@media (max-width: 1099px) {
+  :root {
+    --card-w: 72px;
+    --card-h: 100px;
+  }
+}
+
+/* Narrow — switch to vertical-stack table & smaller cards */
+@media (max-width: 899px) {
+  :root {
+    --card-w: 64px;
+    --card-h: 90px;
+    --card-w-large: 80px;
+    --card-h-large: 112px;
+  }
+}
+
+@media (max-width: 699px) {
+  :root {
+    --card-w: 56px;
+    --card-h: 78px;
+    --card-w-large: 64px;
+    --card-h-large: 90px;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+  }
+}
+
+/* Phone-portrait — graceful, not optimized */
+@media (max-width: 379px) {
+  :root {
+    --card-w: 48px;
+    --card-h: 68px;
+    --card-w-large: 52px;
+    --card-h-large: 74px;
+    --font-size-base: 0.95rem;
+    --font-size-xl: 1.25rem;
+  }
+}

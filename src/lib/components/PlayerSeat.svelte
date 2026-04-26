@@ -37,14 +37,30 @@
   }: Props = $props();
 </script>
 
-<section class="seat" class:active={isActive} class:sitting-out={isSittingOut} aria-label={`${seat} seat`}>
+<section
+  class="seat"
+  class:active={isActive}
+  class:sitting-out={isSittingOut}
+  aria-labelledby={`seat-heading-${seat}`}
+  aria-current={isActive ? 'true' : undefined}
+>
   <header class="hdr">
-    <span class="name">{seat}{isHuman ? ' (you)' : ''}</span>
+    <h3 id={`seat-heading-${seat}`} class="name">
+      {seat}{isHuman ? ' (you)' : ''}
+    </h3>
     <span class="badges">
-      {#if isDealer}<span class="badge">D</span>{/if}
-      {#if isMaker}<span class="badge maker">M</span>{/if}
-      {#if isActive}<span class="badge active" aria-label="Active turn">▶</span>{/if}
-      {#if isSittingOut}<span class="badge muted">sitting out</span>{/if}
+      {#if isDealer}
+        <span class="badge" aria-label="Dealer"><span aria-hidden="true">D</span></span>
+      {/if}
+      {#if isMaker}
+        <span class="badge maker" aria-label="Maker"><span aria-hidden="true">M</span></span>
+      {/if}
+      {#if isActive}
+        <span class="badge active" aria-label="Active turn"><span aria-hidden="true">▶</span></span>
+      {/if}
+      {#if isSittingOut}
+        <span class="badge muted">sitting out</span>
+      {/if}
     </span>
   </header>
   <Hand
@@ -52,7 +68,7 @@
     faceDown={!isHuman}
     playable={playable}
     onPlay={onPlay}
-    ariaLabel={`${seat} hand`}
+    ariaLabel={`${seat} hand, ${cards.length} ${cards.length === 1 ? 'card' : 'cards'}`}
   />
 </section>
 
@@ -61,50 +77,78 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-1, 0.25rem);
-    padding: var(--space-2, 0.5rem);
-    border-radius: var(--radius-card, 0.5rem);
-    background-color: hsla(0, 0%, 0%, 0.15);
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-3);
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    transition:
+      box-shadow var(--duration-normal) var(--easing-standard),
+      border-color var(--duration-normal) var(--easing-standard),
+      opacity var(--duration-fast) var(--easing-standard);
   }
   .seat.active {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+    border-color: var(--accent);
+    box-shadow:
+      0 0 0 1px var(--accent),
+      0 0 22px hsla(45, 90%, 55%, 0.35);
+    background-color: hsla(45, 30%, 14%, 0.55);
   }
   .seat.sitting-out {
-    opacity: 0.55;
+    opacity: 0.45;
+    filter: saturate(0.5);
   }
   .hdr {
     display: flex;
-    gap: var(--space-2, 0.5rem);
+    gap: var(--space-2);
     align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    inline-size: 100%;
   }
   .name {
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-transform: capitalize;
-    color: var(--text-primary);
+    margin: 0;
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-on-felt);
   }
   .badges {
     display: inline-flex;
-    gap: 4px;
+    gap: var(--space-1);
   }
   .badge {
-    font-size: 0.7rem;
-    padding: 1px 6px;
-    border-radius: 999px;
-    background-color: hsla(0, 0%, 100%, 0.2);
-    color: var(--text-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 1.25rem;
+    block-size: 1.25rem;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-pill);
+    background-color: var(--bg-surface-raised);
+    color: var(--text-on-felt);
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    border: 1px solid var(--border-subtle);
+    line-height: 1;
   }
   .badge.maker {
     background-color: var(--accent);
     color: hsl(0, 0%, 12%);
+    border-color: var(--accent-strong);
   }
   .badge.active {
-    background-color: var(--toggle-on);
+    background-color: var(--success);
+    color: hsl(0, 0%, 100%);
+    border-color: transparent;
   }
   .badge.muted {
     background-color: transparent;
     color: var(--text-muted);
     font-style: italic;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
   }
 </style>

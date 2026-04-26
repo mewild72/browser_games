@@ -16,34 +16,45 @@
   const youWon = $derived(state.winner === 'ns');
 </script>
 
-<section class="game-complete" aria-label="Game complete">
-  <h2>{youWon ? 'You won!' : 'You lost.'}</h2>
+<section class="game-complete" aria-labelledby="game-complete-heading">
+  <h3 id="game-complete-heading">{youWon ? 'You won!' : 'You lost.'}</h3>
   <p>Final score: NS {state.score.ns} – EW {state.score.ew}</p>
-  <button type="button" onclick={onNewGame}>New game</button>
+  <button type="button" class="btn btn-primary" onclick={onNewGame}>New game</button>
 </section>
 
 <style>
   .game-complete {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2, 0.5rem);
-    padding: var(--space-3, 1rem);
-    background-color: hsla(0, 0%, 0%, 0.4);
-    border-radius: var(--radius-card, 0.5rem);
-    color: var(--text-primary);
+    gap: var(--space-3);
+    padding: var(--space-5);
+    background-color: var(--bg-surface-strong);
+    border-radius: var(--radius-lg);
+    color: var(--text-on-felt);
+    border: 1px solid var(--accent);
+    box-shadow:
+      var(--shadow-panel),
+      0 0 30px hsla(45, 90%, 55%, 0.18);
     align-items: center;
     text-align: center;
+    animation: panel-appear var(--duration-normal) var(--easing-emphasized);
   }
-  h2 {
+  h3 {
     margin: 0;
+    font-size: var(--font-size-xl);
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.02em;
   }
-  button {
-    padding: 0.6rem 1.2rem;
-    border-radius: 0.4rem;
-    border: none;
-    background-color: var(--accent);
-    color: hsl(0, 0%, 12%);
-    cursor: pointer;
-    font-weight: 600;
+  p {
+    margin: 0;
+    font-size: var(--font-size-md);
+    color: var(--text-on-felt);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .game-complete {
+      animation: none;
+    }
   }
 </style>

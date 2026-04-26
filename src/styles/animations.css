@@ -1,0 +1,114 @@
+/*
+ * Keyframes for game motion.
+ *
+ * These keyframes are defined globally so component-scoped <style> blocks
+ * can reference them by name. (Svelte scoping doesn't apply to @keyframes
+ * names — they're already global.) Components opt in by setting
+ * `animation: ...` on the relevant element.
+ *
+ * The reduced-motion override lives in motion.css and trims animation-
+ * duration to 0.01ms for everything.
+ */
+
+/* Card flies in from kitty position (origin) to seat position (translate
+ * back to 0). The animating element is positioned at its destination; the
+ * keyframe pre-translates it from a "delivered from above-center" offset.
+ * Components may compose with their own transform stack via CSS variables
+ * --deal-from-x and --deal-from-y. */
+@keyframes deal-in {
+  from {
+    opacity: 0;
+    transform: translate(var(--deal-from-x, 0), var(--deal-from-y, -40px)) rotate(-6deg) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0) scale(1);
+  }
+}
+
+/* Card moves from the player's hand into the trick area. Components set
+ * --play-from-x / --play-from-y to the offset from origin → trick area. */
+@keyframes play-card {
+  from {
+    opacity: 0;
+    transform: translate(var(--play-from-x, 0), var(--play-from-y, 40px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+}
+
+/* End of trick: cards in the trick area drift toward the winner's seat. */
+@keyframes gather-trick {
+  from {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--gather-x, 0), var(--gather-y, -60px)) scale(0.85);
+  }
+}
+
+/* Flip: rotate Y from 0 to 180. Used on the kitty's turned card and on
+ * end-of-hand bot-hand reveal. The element using this keyframe must have
+ * `backface-visibility: hidden` and a stacked face/back pair. */
+@keyframes flip-card {
+  0% {
+    transform: rotateY(0deg);
+  }
+  100% {
+    transform: rotateY(180deg);
+  }
+}
+
+/* Subtle pulse on the active seat to draw the eye. Slow, low-amplitude. */
+@keyframes pulse-active-seat {
+  0%, 100% {
+    box-shadow: 0 0 0 2px var(--accent), 0 0 0 0 hsla(45, 90%, 55%, 0.0);
+  }
+  50% {
+    box-shadow: 0 0 0 2px var(--accent), 0 0 18px 4px hsla(45, 90%, 55%, 0.4);
+  }
+}
+
+/* Modal entrance. */
+@keyframes modal-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes modal-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Generic "appear" — used by hand-complete / game-complete panels. */
+@keyframes panel-appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The .with-motion utility lets a component opt into the reduced-motion
+ * fallback by NOT applying the animation when the user prefers reduced
+ * motion. The motion.css override does this globally for all animations. */
+.with-motion {
+  /* Marker class only — no rules. Components reference this by adding it
+   * conditionally or using `prefers-reduced-motion` directly. */
+}

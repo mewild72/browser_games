@@ -43,57 +43,76 @@
   }
 </script>
 
-<header class="scoreboard" aria-label="Score board">
-  <div class="cell">
-    <span class="label">NS</span>
-    <span class="value">{state.score.ns}</span>
-  </div>
-  <div class="cell">
-    <span class="label">EW</span>
-    <span class="value">{state.score.ew}</span>
-  </div>
-  <div class="cell wide">
-    <span class="label">Phase</span>
-    <span class="value">{state.phase}</span>
-  </div>
-  <div class="cell wide">
-    <span class="label">Dealer</span>
-    <span class="value">{state.dealer}</span>
-  </div>
-  <div class="cell wide">
-    <span class="label">Trump</span>
-    <span class="value">{trumpLabel}</span>
-  </div>
-  <div class="cell wide">
-    <span class="label">Maker</span>
-    <span class="value">{makerLabel}</span>
-  </div>
-  <div class="cell wider">
-    <span class="label">Tricks</span>
-    <span class="value">{tricksLabel}</span>
-  </div>
-  <div class="cell wide">
-    <span class="label">To win</span>
-    <span class="value">{state.variants.pointsToWin}</span>
-  </div>
-</header>
+<section class="scoreboard" aria-labelledby="scoreboard-heading">
+  <h3 id="scoreboard-heading" class="sr-only">Score</h3>
+  <!--
+    Definition list is the right semantic for label/value pairs. Screen readers
+    announce them as "NS, term … 0, definition." A real <table> would be heavy
+    for what is fundamentally key/value data, not tabular rows × columns.
+  -->
+  <dl class="cells">
+    <div class="cell">
+      <dt class="label">NS</dt>
+      <dd class="value">{state.score.ns}</dd>
+    </div>
+    <div class="cell">
+      <dt class="label">EW</dt>
+      <dd class="value">{state.score.ew}</dd>
+    </div>
+    <div class="cell wide">
+      <dt class="label">Phase</dt>
+      <dd class="value">{state.phase}</dd>
+    </div>
+    <div class="cell wide">
+      <dt class="label">Dealer</dt>
+      <dd class="value">{state.dealer}</dd>
+    </div>
+    <div class="cell wide">
+      <dt class="label">Trump</dt>
+      <dd class="value">{trumpLabel}</dd>
+    </div>
+    <div class="cell wide">
+      <dt class="label">Maker</dt>
+      <dd class="value">{makerLabel}</dd>
+    </div>
+    <div class="cell wider">
+      <dt class="label">Tricks</dt>
+      <dd class="value">{tricksLabel}</dd>
+    </div>
+    <div class="cell wide">
+      <dt class="label">To win</dt>
+      <dd class="value">{state.variants.pointsToWin}</dd>
+    </div>
+  </dl>
+</section>
 
 <style>
   .scoreboard {
+    padding: var(--space-3) var(--space-4);
+    background-color: var(--bg-surface-strong);
+    border-radius: var(--radius-lg);
+    color: var(--text-on-felt);
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-panel);
+  }
+  .cells {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-3, 1rem);
+    gap: var(--space-4) var(--space-5);
     align-items: stretch;
-    padding: var(--space-2, 0.5rem) var(--space-3, 1rem);
-    background-color: hsla(0, 0%, 0%, 0.25);
-    border-radius: var(--radius-card, 0.5rem);
-    color: var(--text-primary);
+    margin: 0;
+    padding: 0;
   }
   .cell {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
+    gap: 2px;
     min-inline-size: 3rem;
+  }
+  dt,
+  dd {
+    margin: 0;
   }
   .cell.wide {
     min-inline-size: 5rem;
@@ -102,12 +121,16 @@
     min-inline-size: 12rem;
   }
   .label {
-    font-size: 0.7rem;
+    font-size: var(--font-size-xs);
     text-transform: uppercase;
+    letter-spacing: 0.08em;
     color: var(--text-muted);
+    font-weight: 600;
   }
   .value {
-    font-size: 1rem;
+    font-size: var(--font-size-md);
     font-weight: 600;
+    color: var(--text-on-felt);
+    text-transform: capitalize;
   }
 </style>

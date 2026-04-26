@@ -115,6 +115,56 @@
     return out;
   }
 
+  /**
+   * When the human's turn begins (the playable list goes from empty to
+   * non-empty) and no other element already has user focus inside the
+   * hand, move focus to the first playable card. This satisfies WCAG
+   * 2.4.3 (focus order) for keyboard-only players: they don't have to
+   * Tab around the table to find their cards each trick.
+   *
+   * We refuse to grab focus when a modal is open (the focus belongs to
+   * the modal) or when an interactive element on the page is already
+   * focused inside the south-seat hand (the user already has a card
+   * selected and may be deliberating).
+   */
+  // Plain `let` rather than $state — this is an internal guard against
+  // re-focusing on every reactive tick; nothing else needs to react to it.
+  let lastFocusedTrickIndex = -1;
+  $effect(() => {
+    // Re-evaluate whenever humanPlayable changes.
+    const playable = humanPlayable;
+    if (playable.length === 0) {
+      lastFocusedTrickIndex = -1;
+      return;
+    }
+    if (state.phase !== 'playing') return;
+    // Use trick index as a one-shot guard so we focus once per trick the
+    // human leads / responds to, not every reactive tick.
+    const trickIndex = state.completedTricks.length;
+    if (trickIndex === lastFocusedTrickIndex) return;
+    queueMicrotask(() => {
+      // Refuse if a modal dialog is open.
+      if (document.querySelector('[role="dialog"]') !== null) return;
+      // Refuse if focus already lives inside the south seat.
+      const southSeat = document.querySelector('.south-seat');
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        southSeat !== null &&
+        southSeat.contains(active)
+      ) {
+        return;
+      }
+      const firstCard = document.querySelector<HTMLButtonElement>(
+        '.south-seat button.card.playable',
+      );
+      if (firstCard !== null) {
+        firstCard.focus();
+        lastFocusedTrickIndex = trickIndex;
+      }
+    });
+  });
+
   function onPlayHumanCard(card: Card): void {
     const action: Action = { type: 'playCard', seat: HUMAN_SEAT, card };
     dispatchUser(action);
@@ -134,17 +184,32 @@
 
   // For each non-human seat, build a face-down card list of the right length
   // so the visual count is accurate.
+  //
+  // Each placeholder card needs a unique (suit, rank, deckId) triple
+  // because Hand.svelte keys its `{#each}` block by that triple — emitting
+  // five identical placeholders triggers Svelte's `each_key_duplicate`
+  // runtime error and blanks the page. Vary `deckId` per slot to keep
+  // the keys distinct without affecting the visible face-down rendering
+  // (CardView ignores suit/rank/deckId when faceDown=true).
   function fakeFaceDown(n: number): readonly Card[] {
     const arr: Card[] = [];
     for (let i = 0; i < n; i++) {
-      // Placeholder card content; CardView ignores rank/suit when faceDown=true.
-      arr.push({ suit: 'spades', rank: '9' });
+      arr.push({ suit: 'spades', rank: '9', deckId: i });
     }
     return arr;
   }
 </script>
 
-<div class="table" aria-label="Euchre table">
+<!--
+  Outer wrapper is <section aria-label="Euchre game">. We deliberately do
+  NOT use role="application" here — that role tells assistive tech to suppress
+  its virtual-cursor browse mode, and our game interactions are all standard
+  button presses (no custom keyboard navigation grids). A labelled <section>
+  preserves the screen-reader's normal reading mode while still grouping the
+  game content as a discrete region.
+-->
+<section class="table" aria-label="Euchre game">
+  <h2 class="sr-only">Game table</h2>
   <div class="grid">
     <div class="score-area">
       <ScoreBoard state={state} />
@@ -172,13 +237,13 @@
       />
     </div>
 
-    <div class="center-area">
+    <section class="center-area" aria-label="Play area">
       {#if showKitty}
         <Kitty turnedCard={turnedCard} kitty={kitty} turnedFaceDown={turnedFaceDown} />
       {:else}
         <TrickArea plays={trickPlays} />
       {/if}
-    </div>
+    </section>
 
     <div class="east-seat">
       <PlayerSeat
@@ -219,13 +284,46 @@
       <ActionLog entries={actionLog.value} />
     </div>
   </div>
-</div>
+</section>
 
 <style>
+  /*
+    The table itself paints the felt — a layered radial gradient gives the
+    classic "spotlight on green felt" look without an image asset. The
+    inner felt is darker; the edge fades a touch lighter, making the
+    middle of the table feel illuminated.
+  */
   .table {
-    color: var(--text-primary);
+    position: relative;
+    color: var(--text-on-felt);
+    background:
+      radial-gradient(
+        ellipse at 50% 35%,
+        var(--bg-felt-edge) 0%,
+        var(--bg-felt) 45%,
+        var(--bg-felt-deep) 100%
+      );
+    /* Subtle felt texture: a tiny pseudo-noise via repeating radial-gradient
+       dots. Keeps the surface from looking flat without an image. */
+    background-blend-mode: normal;
+    min-block-size: 100%;
+    padding: var(--space-5) var(--space-4);
   }
+  .table::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(
+      hsla(0, 0%, 100%, 0.025) 1px,
+      transparent 1px
+    );
+    background-size: 4px 4px;
+    mix-blend-mode: overlay;
+  }
+
   .grid {
+    position: relative;
     display: grid;
     grid-template-columns: 1fr 2fr 1fr;
     grid-template-rows: auto auto auto auto auto;
@@ -235,10 +333,9 @@
       'west    center   east'
       'log     south    panel'
       'log     log      panel';
-    gap: var(--space-3, 1rem);
+    gap: var(--space-4);
     max-inline-size: 80rem;
     margin-inline: auto;
-    padding: var(--space-3, 1rem);
   }
   .score-area {
     grid-area: score;
@@ -270,16 +367,37 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    min-block-size: 8rem;
+    min-block-size: 12rem;
+    /* The center "well" — a subtle inset darkening to focus attention */
+    border-radius: var(--radius-lg);
+    background-color: hsla(140, 35%, 14%, 0.5);
+    box-shadow:
+      inset 0 2px 8px hsla(0, 0%, 0%, 0.35),
+      inset 0 0 40px hsla(0, 0%, 0%, 0.25);
+    padding: var(--space-4);
   }
   .panel-area {
     grid-area: panel;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
   }
   .log-area {
     grid-area: log;
   }
 
-  @media (max-width: 720px) {
+  /* Tablet — keep horizontal seats but tighten gaps */
+  @media (max-width: 1099px) {
+    .table {
+      padding: var(--space-4) var(--space-3);
+    }
+    .grid {
+      gap: var(--space-3);
+    }
+  }
+
+  /* Narrow — drop side seats and panels into a single column. */
+  @media (max-width: 899px) {
     .grid {
       grid-template-columns: 1fr;
       grid-template-areas:
@@ -291,6 +409,19 @@
         'south'
         'panel'
         'log';
+    }
+    .west-seat,
+    .east-seat {
+      justify-content: center;
+    }
+    .center-area {
+      min-block-size: 9rem;
+    }
+  }
+
+  @media (max-width: 699px) {
+    .table {
+      padding: var(--space-3) var(--space-2);
     }
   }
 </style>

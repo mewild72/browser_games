@@ -1,0 +1,206 @@
+/*
+ * Global layout helpers shared across components.
+ *
+ * Most layout lives in component-scoped <style> blocks. This file holds:
+ *   1. The `.app-shell` chrome that wraps the topbar + main content.
+ *   2. Shared button visuals (primary / secondary / ghost / icon).
+ *   3. Shared panel surfaces overlaid on the felt.
+ *
+ * Component CSS may extend these via class composition rather than
+ * duplicating the rules.
+ */
+
+/* ----------------------------------------------------------------------
+ * App shell
+ * --------------------------------------------------------------------*/
+
+.app-shell {
+  min-block-size: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  /* The felt is painted on the GameTable, not the whole shell, so the
+   * topbar can sit on a darker app surface. */
+}
+
+.app-shell > main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  background: linear-gradient(
+    180deg,
+    hsla(0, 0%, 0%, 0.5) 0%,
+    hsla(0, 0%, 0%, 0.3) 100%
+  );
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+  /* Subtle gold underline tying the brand to the table accent */
+  text-shadow: 0 1px 0 hsla(0, 0%, 0%, 0.5);
+}
+
+.topbar nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* ----------------------------------------------------------------------
+ * Buttons
+ * --------------------------------------------------------------------*/
+
+/* Base button visual — used by class composition. Reset-min-size 44x44 is
+ * inherited via .touch-target where needed; component CSS adds it explicitly
+ * when the button isn't already big enough. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-block-size: 44px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard),
+    transform var(--duration-fast) var(--easing-standard),
+    box-shadow var(--duration-fast) var(--easing-standard);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Primary — the visible "do the main thing" action. Filled gold. */
+.btn-primary {
+  background-color: var(--accent);
+  color: hsl(0, 0%, 12%);
+  border-color: var(--accent);
+  box-shadow: 0 1px 0 hsla(0, 0%, 100%, 0.25) inset, var(--shadow-panel);
+}
+.btn-primary:hover:not(:disabled),
+.btn-primary:focus-visible:not(:disabled) {
+  background-color: var(--accent-strong);
+  border-color: var(--accent-strong);
+  transform: translateY(-1px);
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Secondary — outlined, subtle. */
+.btn-secondary {
+  background-color: var(--bg-surface-raised);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.btn-secondary:hover:not(:disabled),
+.btn-secondary:focus-visible:not(:disabled) {
+  background-color: hsla(0, 0%, 100%, 0.14);
+  border-color: var(--text-primary);
+}
+
+/* Ghost — minimal, used in topbar and tight rows. */
+.btn-ghost {
+  background-color: transparent;
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.btn-ghost:hover:not(:disabled),
+.btn-ghost:focus-visible:not(:disabled) {
+  background-color: var(--bg-surface-raised);
+}
+
+/* Suit-call buttons inherit btn-secondary, then specialize via .red */
+.btn .suit-glyph {
+  font-size: var(--font-size-lg);
+  line-height: 1;
+}
+.btn.is-suit-red {
+  color: var(--suit-red-on-felt);
+}
+
+/* Icon-only button (close X). */
+.btn-icon {
+  min-block-size: 44px;
+  min-inline-size: 44px;
+  padding: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-xl);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard);
+}
+.btn-icon:hover:not(:disabled),
+.btn-icon:focus-visible:not(:disabled) {
+  background-color: var(--bg-surface-raised);
+  border-color: var(--border-strong);
+}
+
+/* ----------------------------------------------------------------------
+ * Panel surfaces (overlaid on the felt)
+ * --------------------------------------------------------------------*/
+
+.panel {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  color: var(--text-on-felt);
+  box-shadow: var(--shadow-panel);
+}
+
+.panel-strong {
+  background-color: var(--bg-surface-strong);
+}
+
+/* Pill badge — for dealer/maker/active markers. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-inline-size: 1.5rem;
+  block-size: 1.5rem;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background-color: var(--bg-surface-raised);
+  color: var(--text-on-felt);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-subtle);
+}

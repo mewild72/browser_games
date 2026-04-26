@@ -70,14 +70,15 @@
   }
 </script>
 
-<section class="bidding" aria-label="Bidding controls">
+<section class="bidding" aria-labelledby="bidding-heading">
+  <h3 id="bidding-heading" class="sr-only">Bidding</h3>
   {#if gameState.phase === 'bidding-round-1'}
     {#if isHumanTurn}
-      <h3>Bidding round 1</h3>
+      <h4>Bidding round 1</h4>
       <p>Order up the {gameState.turnedCard.rank} of {gameState.turnedCard.suit}?</p>
       <div class="controls">
-        <button type="button" onclick={pass}>Pass</button>
-        <button type="button" onclick={orderUp}>Order up</button>
+        <button type="button" class="btn btn-secondary" onclick={pass}>Pass</button>
+        <button type="button" class="btn btn-primary" onclick={orderUp}>Order up</button>
         {#if gameState.variants.allowGoingAlone}
           <Toggle
             value={goingAlone}
@@ -92,21 +93,21 @@
   {:else if gameState.phase === 'bidding-round-2'}
     {#if isHumanTurn}
       {@const dealerStuck = gameState.variants.stickTheDealer && gameState.turn === gameState.dealer}
-      <h3>Bidding round 2</h3>
+      <h4>Bidding round 2</h4>
       <p>Rejected suit: {gameState.rejectedSuit}{dealerStuck ? ' — you are stuck!' : ''}</p>
       <div class="controls">
         {#if !dealerStuck}
-          <button type="button" onclick={pass}>Pass</button>
+          <button type="button" class="btn btn-secondary" onclick={pass}>Pass</button>
         {/if}
         {#each ['clubs', 'diamonds', 'hearts', 'spades'] as suit (suit)}
           {#if suit !== gameState.rejectedSuit}
             <button
               type="button"
-              class="suit-btn"
-              class:red={suit === 'hearts' || suit === 'diamonds'}
+              class="btn btn-secondary suit-btn"
+              class:is-suit-red={suit === 'hearts' || suit === 'diamonds'}
               onclick={() => callTrump(suit as Suit)}
             >
-              Call {suitGlyph(suit as Suit)}
+              Call <span class="suit-glyph">{suitGlyph(suit as Suit)}</span>
             </button>
           {/if}
         {/each}
@@ -123,7 +124,7 @@
     {/if}
   {:else if gameState.phase === 'dealer-discard'}
     {#if isHumanTurn}
-      <h3>Dealer discard</h3>
+      <h4>Dealer discard</h4>
       <p>Pick one card to discard.</p>
       <ul class="discard-list">
         {#each gameState.hands[HUMAN_SEAT] as card (`${card.suit}-${card.rank}-${card.deckId ?? 0}`)}
@@ -142,18 +143,25 @@
   .bidding {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2, 0.5rem);
-    padding: var(--space-3, 1rem);
-    background-color: hsla(0, 0%, 0%, 0.25);
-    border-radius: var(--radius-card, 0.5rem);
-    color: var(--text-primary);
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background-color: var(--bg-surface-strong);
+    border-radius: var(--radius-lg);
+    color: var(--text-on-felt);
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-panel);
   }
-  h3 {
+  h4 {
     margin: 0;
-    font-size: 1rem;
+    font-size: var(--font-size-md);
+    font-weight: 700;
+    color: var(--text-on-felt);
+    letter-spacing: 0.02em;
   }
   p {
     margin: 0;
+    font-size: var(--font-size-sm);
+    color: var(--text-on-felt);
   }
   .status {
     color: var(--text-muted);
@@ -161,29 +169,16 @@
   }
   .controls {
     display: flex;
-    gap: var(--space-2, 0.5rem);
+    gap: var(--space-2);
     flex-wrap: wrap;
     align-items: center;
-  }
-  button {
-    padding: 0.4rem 0.8rem;
-    border-radius: 0.4rem;
-    border: 1px solid hsl(0, 0%, 60%);
-    background-color: hsla(0, 0%, 100%, 0.1);
-    color: var(--text-primary);
-    cursor: pointer;
-  }
-  button:hover {
-    background-color: hsla(0, 0%, 100%, 0.2);
-  }
-  .suit-btn.red {
-    color: hsl(0, 70%, 65%);
   }
   .discard-list {
     list-style: none;
     padding: 0;
     margin: 0;
     display: flex;
-    gap: var(--space-1, 0.25rem);
+    gap: var(--space-2);
+    flex-wrap: wrap;
   }
 </style>

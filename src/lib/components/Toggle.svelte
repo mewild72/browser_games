@@ -6,8 +6,14 @@
    * app uses this component. There are no `<input type="checkbox">` in the
    * visible UI.
    *
+   * Visual: a 36×20px (default) or 52×28px (large) rounded pill, filled
+   * with --toggle-on (green) when on or --toggle-off (grey) when off, with
+   * a white circular handle that animates from left edge to right edge.
+   * The 44×44px click target is enforced via padding around the visible
+   * pill so the visible pill stays compact.
+   *
    * Owner: svelte-component-architect (markup, behavior); css-expert
-   * (visual polish later).
+   * (visual layer).
    */
   type Props = {
     value: boolean;
@@ -39,11 +45,16 @@
       toggle();
     }
   }
+
+  // Stable per-instance id (Svelte 5.20+ $props.id rune). The visible label
+  // is associated with the switch via aria-labelledby={labelId}.
+  const componentId = $props.id();
+  const labelId = `${componentId}-toggle-label`;
 </script>
 
 <span class="toggle-row" class:label-hidden={labelHidden}>
   {#if !labelHidden}
-    <span class="label">{label}</span>
+    <span class="label" id={labelId}>{label}</span>
   {/if}
   <button
     type="button"
@@ -52,12 +63,15 @@
     class:large={size === 'large'}
     class:on={value}
     aria-checked={value}
+    aria-labelledby={labelHidden ? undefined : labelId}
     aria-label={labelHidden ? label : undefined}
     disabled={disabled}
     onclick={toggle}
     onkeydown={onKey}
   >
-    <span class="handle" aria-hidden="true"></span>
+    <span class="pill" aria-hidden="true">
+      <span class="handle"></span>
+    </span>
   </button>
 </span>
 
@@ -65,58 +79,88 @@
   .toggle-row {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-2, 0.5rem);
+    gap: var(--space-3);
   }
   .toggle-row.label-hidden {
     gap: 0;
   }
 
   .label {
-    font-size: 0.95rem;
+    font-size: var(--font-size-sm);
+    color: var(--text-on-felt);
   }
 
+  /*
+    The button is the click target — it carries the 44×44 floor (WCAG 2.2
+    SC 2.5.5). Inside it sits the visible .pill, which keeps the compact
+    36×20 (or 52×28 large) visual. Because the button has no background of
+    its own, the larger hit area is invisible — clicks anywhere in the
+    44×44 box still trigger the toggle.
+  */
   .toggle {
-    --w: 36px;
-    --h: 20px;
-    inline-size: var(--w);
-    block-size: var(--h);
-    border: none;
+    --pill-w: 36px;
+    --pill-h: 20px;
+    min-inline-size: 44px;
+    min-block-size: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     padding: 0;
-    border-radius: 999px;
-    background-color: var(--toggle-off);
-    position: relative;
+    border: none;
+    background: transparent;
     cursor: pointer;
-    transition: background-color var(--duration-fast, 150ms) ease;
+    border-radius: var(--radius-pill);
   }
   .toggle.large {
-    --w: 52px;
-    --h: 28px;
-  }
-  .toggle.on {
-    background-color: var(--toggle-on);
+    --pill-w: 52px;
+    --pill-h: 28px;
   }
   .toggle:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
 
+  .pill {
+    position: relative;
+    display: inline-block;
+    inline-size: var(--pill-w);
+    block-size: var(--pill-h);
+    border-radius: var(--radius-pill);
+    background-color: var(--toggle-off);
+    box-shadow: inset 0 1px 2px hsla(0, 0%, 0%, 0.25);
+    transition: background-color var(--duration-fast) var(--easing-standard);
+  }
+  .toggle.on .pill {
+    background-color: var(--toggle-on);
+  }
+
   .handle {
     position: absolute;
     inset-block-start: 2px;
     inset-inline-start: 2px;
-    inline-size: calc(var(--h) - 4px);
-    block-size: calc(var(--h) - 4px);
+    inline-size: calc(var(--pill-h) - 4px);
+    block-size: calc(var(--pill-h) - 4px);
     border-radius: 50%;
     background-color: var(--toggle-handle);
-    box-shadow: 0 1px 2px hsla(0, 0%, 0%, 0.35);
-    transition: transform var(--duration-fast, 150ms) ease;
+    box-shadow:
+      0 1px 2px hsla(0, 0%, 0%, 0.4),
+      0 0 0 0.5px hsla(0, 0%, 0%, 0.1);
+    transition: transform var(--duration-fast) var(--easing-standard);
   }
   .toggle.on .handle {
-    transform: translateX(calc(var(--w) - var(--h)));
+    transform: translateX(calc(var(--pill-w) - var(--pill-h)));
+  }
+
+  /* Focus ring on the button (the click target), not the pill — keeps the
+     ring visible and aligned to the actual interactive area. */
+  .toggle:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-pill);
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .toggle,
+    .pill,
     .handle {
       transition: none;
     }

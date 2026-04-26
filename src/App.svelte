@@ -6,9 +6,11 @@
    * the top-level navigation buttons, and modal open/close state. The
    * actual game view is delegated to <GameTable>.
    *
-   * Owner: svelte-component-architect
+   * Owner: svelte-component-architect (logic); css-expert (visual layer
+   * via .app-shell / .topbar / .btn classes from layout.css).
    */
   import GameTable from '@/lib/components/GameTable.svelte';
+  import KeyboardHelp from '@/lib/components/KeyboardHelp.svelte';
   import SettingsModal from '@/lib/components/SettingsModal.svelte';
   import StatsModal from '@/lib/components/StatsModal.svelte';
   import {
@@ -24,6 +26,7 @@
 
   let settingsOpen = $state(false);
   let statsOpen = $state(false);
+  let helpOpen = $state(false);
 
   function openSettings(): void {
     settingsOpen = true;
@@ -37,58 +40,76 @@
   function closeStats(): void {
     statsOpen = false;
   }
+  function openHelp(): void {
+    helpOpen = true;
+  }
+  function closeHelp(): void {
+    helpOpen = false;
+  }
   function newGame(): void {
     void startNewGameSession();
   }
+
+  /**
+   * Global "?" shortcut — opens the keyboard help overlay.
+   *
+   * Registered on window so the binding works regardless of which
+   * element has focus (except inside text inputs, where typing "?"
+   * obviously must not steal the keystroke). Modal Esc handling is
+   * already covered by the shared <Modal>.
+   */
+  function onWindowKeydown(e: KeyboardEvent): void {
+    // Ignore when the user is typing into an input/textarea/contenteditable.
+    const target = e.target;
+    if (target instanceof HTMLElement) {
+      const tag = target.tagName;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+    }
+    // Don't interfere with browser shortcuts.
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === '?') {
+      e.preventDefault();
+      openHelp();
+    }
+  }
 </script>
 
-<main>
+<svelte:window onkeydown={onWindowKeydown} />
+
+<div class="app-shell">
+  <!--
+    Top-level <header> at the document root is the banner landmark by
+    default — explicit role="banner" is redundant (and Svelte's a11y rule
+    `a11y_no_redundant_roles` flags it). Same for <main>'s role="main".
+  -->
   <header class="topbar">
     <h1>Euchre</h1>
-    <nav class="nav">
-      <button type="button" onclick={newGame}>New game</button>
-      <button type="button" onclick={openStats}>Stats</button>
-      <button type="button" onclick={openSettings}>Settings</button>
+    <nav aria-label="Game controls">
+      <button type="button" class="btn btn-primary" onclick={newGame}>New game</button>
+      <button type="button" class="btn btn-ghost" onclick={openStats}>Stats</button>
+      <button type="button" class="btn btn-ghost" onclick={openSettings}>Settings</button>
+      <button
+        type="button"
+        class="btn btn-ghost"
+        onclick={openHelp}
+        aria-label="Keyboard shortcuts (?)"
+        title="Keyboard shortcuts (?)"
+      >?</button>
     </nav>
   </header>
 
-  <GameTable />
+  <main id="main-content">
+    <GameTable />
+  </main>
 
   <SettingsModal open={settingsOpen} onclose={closeSettings} />
   <StatsModal open={statsOpen} onclose={closeStats} />
-</main>
-
-<style>
-  main {
-    min-block-size: 100dvh;
-    background-color: var(--table-felt);
-    color: var(--text-primary);
-  }
-  .topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-2, 0.5rem) var(--space-3, 1rem);
-    background-color: hsla(0, 0%, 0%, 0.3);
-  }
-  h1 {
-    margin: 0;
-    font-size: 1.4rem;
-    letter-spacing: 0.02em;
-  }
-  .nav {
-    display: flex;
-    gap: var(--space-2, 0.5rem);
-  }
-  .nav button {
-    padding: 0.4rem 0.8rem;
-    border-radius: 0.4rem;
-    border: 1px solid hsla(0, 0%, 100%, 0.3);
-    background-color: hsla(0, 0%, 100%, 0.1);
-    color: var(--text-primary);
-    cursor: pointer;
-  }
-  .nav button:hover {
-    background-color: hsla(0, 0%, 100%, 0.2);
-  }
-</style>
+  <KeyboardHelp open={helpOpen} onclose={closeHelp} />
+</div>

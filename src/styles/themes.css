@@ -1,0 +1,58 @@
+/*
+ * Theme overrides.
+ *
+ * The default (no [data-theme] attribute, or [data-theme="dark"]) uses the
+ * tokens defined in tokens.css verbatim. The light theme overrides only the
+ * surface and text tokens — the felt remains green in both themes (a green
+ * felt over a warm background still reads as a card table), and accent /
+ * suit colors are unchanged.
+ *
+ * SettingsModal writes data-theme="dark"|"light" to <html> based on the
+ * darkMode preference. Default if no pref is dark.
+ */
+
+[data-theme="light"] {
+  /* Surfaces — warm off-white app, lighter felt with more saturation */
+  --bg-app: hsl(40, 30%, 95%);                  /* warm off-white; --text-primary at 12% black = 16.8:1 */
+  --bg-felt: hsl(140, 32%, 28%);                /* slightly lighter felt for less stark contrast on light bg */
+  --bg-felt-deep: hsl(140, 32%, 22%);
+  --bg-felt-edge: hsl(140, 32%, 34%);
+
+  --bg-surface: hsla(0, 0%, 0%, 0.28);          /* still dark overlay on felt; readable across themes */
+  --bg-surface-strong: hsla(0, 0%, 0%, 0.42);
+  --bg-surface-raised: hsla(0, 0%, 100%, 0.08);
+
+  --bg-modal-backdrop: hsla(220, 12%, 30%, 0.55);
+  --bg-modal-surface: hsl(40, 30%, 98%);
+
+  /* Text */
+  --text-primary: hsl(220, 18%, 14%);           /* near-black on warm white = 16.8:1 */
+  /* --text-on-felt and --text-on-card stay the same; the surfaces themselves are similar across themes */
+  --text-muted: hsl(220, 12%, 38%);             /* on warm off-white = 7.5:1 */
+  --text-disabled: hsl(220, 8%, 56%);           /* on warm off-white = 4.6:1 */
+
+  /* Borders */
+  --border-subtle: hsla(220, 18%, 14%, 0.1);
+  --border-strong: hsla(220, 18%, 14%, 0.25);
+
+  /* Lightened shadows */
+  --shadow-card: 0 2px 6px hsla(220, 18%, 14%, 0.18), 0 1px 2px hsla(220, 18%, 14%, 0.1);
+  --shadow-card-lift: 0 6px 16px hsla(220, 18%, 14%, 0.25), 0 2px 4px hsla(220, 18%, 14%, 0.12);
+  --shadow-modal: 0 20px 60px hsla(220, 18%, 14%, 0.35), 0 4px 12px hsla(220, 18%, 14%, 0.2);
+  --shadow-panel: 0 1px 3px hsla(220, 18%, 14%, 0.2);
+}
+
+/* High-contrast preference: bump tokens to maximize contrast. */
+@media (prefers-contrast: more) {
+  :root {
+    --text-muted: hsl(40, 20%, 90%);
+    --border-subtle: hsla(0, 0%, 100%, 0.35);
+    --border-strong: hsla(0, 0%, 100%, 0.6);
+    --focus-ring: hsl(210, 100%, 75%);
+  }
+  [data-theme="light"] {
+    --text-muted: hsl(220, 18%, 18%);
+    --border-subtle: hsla(220, 18%, 14%, 0.45);
+    --border-strong: hsla(220, 18%, 14%, 0.7);
+  }
+}
