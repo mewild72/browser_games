@@ -69,3 +69,15 @@ Items that aren't tied to a dependency version but track planned work:
 - [ ] Add joker-as-highest-trump variant — game-rules-engine
 - [ ] Light-mode theme — css-expert + accessibility-expert
 - [ ] Replay viewer for completed games — indexeddb-expert + svelte-component-architect
+
+---
+
+## Lockfile drift workaround
+
+**Symptom:** CI fails with errors like `Missing: @emnapi/core@... from lock file` or `Missing: @emnapi/runtime@... from lock file` after a new dep is added locally with `npm install <pkg>`.
+
+**Root cause:** `npm install` only resolves optional deps for the install-time platform (OS + arch). When a new dep is added on one platform, the lockfile loses entries for other platforms' optional WASM/native bindings (e.g., `@emnapi/core`, `@emnapi/runtime`, platform-specific Rollup/swc binaries). CI on a different platform then fails the `npm ci` integrity check.
+
+**Fix:** `npm run lockfix` — wipes `node_modules` and `package-lock.json`, then runs a clean `npm install` so the lockfile re-resolves with all platform variants.
+
+**When to run:** After every `npm install <pkg>`, before committing the lockfile change. Cheaper to run once locally than to chase CI failures.

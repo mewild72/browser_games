@@ -10,7 +10,8 @@
     "check": "svelte-check --tsconfig ./tsconfig.app.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "lockfix": "rm -rf node_modules package-lock.json && npm install"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.2",
