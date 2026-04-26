@@ -12,6 +12,7 @@
 import { untrack } from 'svelte';
 import type {
   Action,
+  CompletedTrick,
   GameState,
   HandResult,
   Seat,
@@ -46,8 +47,17 @@ import {
 /** Default delay (ms) between bot actions so the human can read the table. */
 const DEFAULT_BOT_DELAY_MS = 600;
 
+/** Default pause (ms) after a trick completes so the player can see the 4th card. */
+const DEFAULT_TRICK_PAUSE_MS = 5000;
+
+/** Hard cap on both bot delay and trick pause range. */
+const MAX_DELAY_MS = 5000;
+
 /** Pref key for bot delay (not in the typed PrefsMap; cast at the boundary). */
 const BOT_DELAY_KEY = 'botDelayMs';
+
+/** Pref key for trick-display pause. Typed in PrefsMap. */
+const TRICK_PAUSE_KEY = 'trickPauseMs';
 
 /* ------------------------------------------------------------------ */
 /* Action log                                                         */
@@ -102,7 +112,7 @@ function readBotDelayPref(): number {
   const raw = localStorage.getItem(`euchre.pref.${BOT_DELAY_KEY}`);
   if (raw === null) return DEFAULT_BOT_DELAY_MS;
   const parsed = Number.parseInt(raw, 10);
-  if (Number.isNaN(parsed) || parsed < 0 || parsed > 5000) return DEFAULT_BOT_DELAY_MS;
+  if (Number.isNaN(parsed) || parsed < 0 || parsed > MAX_DELAY_MS) return DEFAULT_BOT_DELAY_MS;
   return parsed;
 }
 
@@ -113,6 +123,26 @@ function writeBotDelayPref(value: number): void {
   } catch {
     // ignore — UI prefs are best-effort
   }
+}
+
+/**
+ * Read the trick-display pause preference. Uses the typed
+ * `getPref('trickPauseMs')` so the value goes through the same JSON
+ * round-trip as other prefs, and falls back to `DEFAULT_TRICK_PAUSE_MS`
+ * when absent or out of range.
+ */
+function readTrickPausePref(): number {
+  const stored = getPref(TRICK_PAUSE_KEY);
+  if (stored === undefined) return DEFAULT_TRICK_PAUSE_MS;
+  if (
+    typeof stored !== 'number' ||
+    Number.isNaN(stored) ||
+    stored < 0 ||
+    stored > MAX_DELAY_MS
+  ) {
+    return DEFAULT_TRICK_PAUSE_MS;
+  }
+  return stored;
 }
 
 /** Current game state. Subscribers re-render when this rune updates. */
@@ -126,6 +156,95 @@ export const variants = $state<{ value: Variants }>({ value: readVariantsPref() 
 
 /** Bot delay in ms between bot decisions. */
 export const botDelayMs = $state<{ value: number }>({ value: readBotDelayPref() });
+
+/**
+ * How long the just-completed trick lingers on the table before the
+ * next trick begins. 0 = legacy behaviour (no pause).
+ */
+export const trickPauseMs = $state<{ value: number }>({ value: readTrickPausePref() });
+
+/**
+ * The trick the table should display while we hold for `trickPauseMs`.
+ * Non-null only during the post-trick pause; `null` otherwise (the
+ * in-progress `state.currentTrick` is the source of truth instead).
+ *
+ * Components read `displayedTrick.value` and render its plays when
+ * present; otherwise they fall back to `state.currentTrick`.
+ */
+export const displayedTrick = $state<{ value: CompletedTrick | null }>({ value: null });
+
+/** setTimeout handle for the active trick pause, so it can be cancelled. */
+let trickPauseTimer: number | null = null;
+
+function clearTrickPauseTimer(): void {
+  if (trickPauseTimer !== null) {
+    clearTimeout(trickPauseTimer);
+    trickPauseTimer = null;
+  }
+}
+
+/**
+ * If `prev → next` represents a trick resolving (the action played the
+ * 4th card of a trick), freeze the just-completed trick on the
+ * displayed table for `trickPauseMs` ms. The bot loop reads
+ * `displayedTrick.value` and won't dispatch while it's set, so the
+ * table actually pauses.
+ *
+ * Two cases produce a resolved trick:
+ *   1. The 4th card of trick #1–#4 — engine returns a `playing` state
+ *      with `completedTricks` grown by one and `currentTrick` reset.
+ *   2. The 4th card of trick #5 — engine returns `hand-complete` (or
+ *      `game-complete` if the score crossed). The just-completed
+ *      trick is *not* on the next state in this case.
+ *
+ * In both cases we construct the `CompletedTrick` to display from
+ * `prev.currentTrick` (the three already-played plays) plus the action
+ * itself (the 4th play). The displayed `winner` is a best-effort —
+ * sourced from `next.completedTricks` when available, otherwise from
+ * `next.trickLeader` (whose seat the engine rotated to in case 1) —
+ * but the visual rendering doesn't surface the winner directly, so
+ * the placeholder is fine for the hand-complete case.
+ */
+function maybeStartTrickPause(
+  prev: GameState,
+  next: GameState,
+  action: Action,
+): void {
+  if (prev.phase !== 'playing') return;
+  if (prev.currentTrick.length !== 3) return;
+  if (action.type !== 'playCard') return;
+
+  const fourthPlay = { seat: action.seat, card: action.card };
+  const plays = [...prev.currentTrick, fourthPlay];
+
+  // Resolve the winner where we can; otherwise fall back to the
+  // trickLeader from the prev state (visual-only placeholder).
+  let winner = prev.trickLeader;
+  if (next.phase === 'playing' && next.completedTricks.length > prev.completedTricks.length) {
+    const ct = next.completedTricks[next.completedTricks.length - 1];
+    if (ct !== undefined) winner = ct.winner;
+  }
+
+  const justCompleted: CompletedTrick = {
+    leader: prev.trickLeader,
+    plays,
+    winner,
+  };
+
+  const pause = trickPauseMs.value;
+  if (pause <= 0) {
+    // Pref disables the pause entirely.
+    displayedTrick.value = null;
+    return;
+  }
+
+  clearTrickPauseTimer();
+  displayedTrick.value = justCompleted;
+  trickPauseTimer = window.setTimeout(() => {
+    trickPauseTimer = null;
+    displayedTrick.value = null;
+  }, pause);
+}
 
 /**
  * Active card-back id. Consumed by `<Card>` for face-down rendering.
@@ -202,14 +321,31 @@ export function logAction(text: string): void {
 let botEpoch = 0;
 
 /**
+ * Tracks the human-auto-play timer separately from the bot loop so it
+ * can be cancelled cleanly when the game advances out of the
+ * "one-card-left" condition (e.g., a `startNewGame` lands mid-pause).
+ */
+let humanAutoPlayEpoch = 0;
+
+
+/**
  * Setup the reactive effects. Called once from `App.svelte` so the
  * effects are owned by a component scope (Svelte requires `$effect` to
  * run inside a reactive context).
  */
 export function installEffects(): void {
   // Bot loop: when the current seat is a bot, sleep then dispatch.
+  //
+  // Gating on `displayedTrick.value` is what holds the post-trick
+  // pause: while a just-completed trick is on display, the loop skips
+  // dispatching so the next trick's first card doesn't appear on top
+  // of the previous trick's four cards. When `displayedTrick` clears
+  // (timer fires, or pref is 0), this effect re-runs and dispatches
+  // the next bot action normally.
   $effect(() => {
     const state = game.value;
+    if (displayedTrick.value !== null) return;
+
     const seat = currentBotSeat(state, bots.value);
     if (seat === null) return;
 
@@ -218,6 +354,43 @@ export function installEffects(): void {
     const delay = botDelayMs.value;
     const timeout = window.setTimeout(() => {
       void runBotTurn(myEpoch);
+    }, delay);
+    return () => window.clearTimeout(timeout);
+  });
+
+  // Auto-play when the human has exactly one card left.
+  //
+  // When the human's turn comes around and there's only one card in the
+  // south hand, there is no decision to make — auto-dispatch `playCard`
+  // for that lone card after a small delay so the highlight is visible.
+  // Gated by the trick-display pause to avoid playing on top of the
+  // just-completed four-card trick.
+  $effect(() => {
+    const state = game.value;
+    if (displayedTrick.value !== null) return;
+    if (state.phase !== 'playing') return;
+    if (state.turn !== HUMAN_SEAT) return;
+    const hand = state.hands[HUMAN_SEAT];
+    if (hand.length !== 1) return;
+    const card = hand[0]!;
+
+    humanAutoPlayEpoch++;
+    const myEpoch = humanAutoPlayEpoch;
+    // Brief pause so the player can see the card highlighted before it
+    // flies onto the trick. Cap at 500 ms — even a long bot delay
+    // shouldn't make the auto-play feel sluggish.
+    const delay = Math.min(500, botDelayMs.value);
+    const timeout = window.setTimeout(() => {
+      if (myEpoch !== humanAutoPlayEpoch) return;
+      // Re-check the guards at fire time — state may have moved since
+      // the timer was scheduled (e.g., a bot dispatched first).
+      const cur = game.value;
+      if (cur.phase !== 'playing') return;
+      if (cur.turn !== HUMAN_SEAT) return;
+      const curHand = cur.hands[HUMAN_SEAT];
+      if (curHand.length !== 1) return;
+      if (displayedTrick.value !== null) return;
+      dispatchUser({ type: 'playCard', seat: HUMAN_SEAT, card });
     }, delay);
     return () => window.clearTimeout(timeout);
   });
@@ -311,6 +484,10 @@ async function runBotTurn(epoch: number): Promise<void> {
     return;
   }
   describeBotAction(result.prevState, result.action, seat);
+  // Schedule the trick-display pause BEFORE swapping in the new state
+  // so the bot-loop $effect sees `displayedTrick.value !== null` on the
+  // next reactive tick and skips dispatching the next action.
+  maybeStartTrickPause(result.prevState, result.state, result.action);
   game.value = result.state;
   // Announce post-action state transitions (trick winners, phase changes,
   // turn updates, score deltas). Pass both states so transitions can be
@@ -518,6 +695,10 @@ export async function startNewGameSession(opts?: {
   bots.value = makeBots(newDifficulty);
 
   const state = startNewGame({ difficulty: newDifficulty, variants: newVariants });
+  // Cancel any in-flight trick-display pause so a fresh hand doesn't
+  // start with a leftover trick frozen on the table.
+  clearTrickPauseTimer();
+  displayedTrick.value = null;
   game.value = state;
   handIndex.value = 0;
   persistedHandIds.value = new Set<string>();
@@ -527,6 +708,7 @@ export async function startNewGameSession(opts?: {
   actionLog.value = [];
   gameStartedAt = Date.now();
   botEpoch++;
+  humanAutoPlayEpoch++;
 
   logAction(`New ${newDifficulty} game started. Dealer: ${state.dealer}.`);
 
@@ -568,6 +750,9 @@ export function dispatchUser(action: Action): boolean {
     return false;
   }
   describeUserAction(prev, action);
+  // Schedule the trick-display pause BEFORE swapping in the new state
+  // so the bot-loop $effect sees the gate closed on its next tick.
+  maybeStartTrickPause(prev, result.state, action);
   game.value = result.state;
   // Mirror the bot path: surface trick-winner / phase / turn transitions.
   announceTransitions(prev, result.state);
@@ -640,9 +825,19 @@ export function setDifficulty(d: Difficulty): void {
  * Update the bot decision delay. Persists across sessions.
  */
 export function setBotDelay(ms: number): void {
-  const clamped = Math.max(0, Math.min(5000, Math.floor(ms)));
+  const clamped = Math.max(0, Math.min(MAX_DELAY_MS, Math.floor(ms)));
   botDelayMs.value = clamped;
   writeBotDelayPref(clamped);
+}
+
+/**
+ * Update the post-trick display pause. Persists across sessions via
+ * the typed `trickPauseMs` pref.
+ */
+export function setTrickPause(ms: number): void {
+  const clamped = Math.max(0, Math.min(MAX_DELAY_MS, Math.floor(ms)));
+  trickPauseMs.value = clamped;
+  setPref(TRICK_PAUSE_KEY, clamped);
 }
 
 /**

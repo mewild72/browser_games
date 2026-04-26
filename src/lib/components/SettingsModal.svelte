@@ -16,7 +16,9 @@
     setBotDelay,
     setCardBack,
     setDifficulty,
+    setTrickPause,
     setVariants,
+    trickPauseMs,
     variants,
   } from '@/lib/game/state.svelte';
   import { cardBacks } from '@/lib/cards/art';
@@ -171,6 +173,19 @@
         step="50"
         value={botDelayMs.value}
         oninput={(e) => setBotDelay(Number((e.target as HTMLInputElement).value))}
+      />
+    </label>
+
+    <label class="range" for="trick-pause">
+      <span>Trick display pause: {trickPauseMs.value} ms</span>
+      <input
+        id="trick-pause"
+        type="range"
+        min="0"
+        max="5000"
+        step="100"
+        value={trickPauseMs.value}
+        oninput={(e) => setTrickPause(Number((e.target as HTMLInputElement).value))}
       />
     </label>
 

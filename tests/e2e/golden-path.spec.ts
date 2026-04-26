@@ -15,6 +15,10 @@ test.describe('Golden path', () => {
   test('finish a hand and advance to the next', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('euchre.pref.botDelayMs', '0');
+      // Skip the post-trick display pause; the golden-path test plays
+      // a hand quickly and would otherwise wait 5s × 5 tricks. The
+      // pause itself is exercised by the unit tests.
+      localStorage.setItem('euchre.pref.trickPauseMs', '0');
     });
 
     await page.goto('/');

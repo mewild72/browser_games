@@ -20,6 +20,9 @@ test.describe('Stats', () => {
   }) => {
     await page.addInitScript(() => {
       localStorage.setItem('euchre.pref.botDelayMs', '0');
+      // Skip the post-trick display pause; the test plays a hand and
+      // would otherwise wait 5s per trick.
+      localStorage.setItem('euchre.pref.trickPauseMs', '0');
     });
 
     await page.goto('/');

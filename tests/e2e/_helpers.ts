@@ -28,8 +28,8 @@ export function openDialog(page: Page, title: string): Locator {
  * Click order:
  *   1. Pass — round 1 / round 2 (human is not stuck dealer)
  *   2. Call <suit> — round 2 stuck dealer
- *   3. Discard a card — dealer-discard phase
- *   4. Play a card — playing phase, human's turn
+ *   3. Click a card in the south hand — covers both dealer-discard
+ *      (when south is the dealer) and playing-phase plays.
  */
 export async function playHandToCompletion(
   page: Page,
@@ -61,24 +61,14 @@ export async function playHandToCompletion(
         .click();
     } else if (
       await page
-        .locator('.bidding .discard-list button.card.playable')
-        .first()
-        .isVisible()
-        .catch(() => false)
-    ) {
-      // Dealer-discard: pick any card.
-      await page
-        .locator('.bidding .discard-list button.card.playable')
-        .first()
-        .click();
-    } else if (
-      await page
         .locator('.south-seat button.card.playable')
         .first()
         .isVisible()
         .catch(() => false)
     ) {
-      // Playing phase: play the first legal card.
+      // Dealer-discard or playing phase: in both cases the south hand
+      // is the source of truth for clickable cards. The phase-aware
+      // dispatcher in GameTable picks the right action type.
       await page
         .locator('.south-seat button.card.playable')
         .first()

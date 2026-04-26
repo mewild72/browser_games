@@ -198,6 +198,13 @@ export type PrefsMap = {
    * update the in-memory rune and defaults would return on next load.
    */
   defaultVariants: Variants;
+  /**
+   * Milliseconds the just-completed trick stays on the table before the
+   * next trick begins. 0 means "no pause" (legacy behaviour). Range
+   * 0..5000; default 5000. UI control lives in the Settings modal next
+   * to the bot-delay slider.
+   */
+  trickPauseMs: number;
 };
 
 /* ------------------------------------------------------------------ */

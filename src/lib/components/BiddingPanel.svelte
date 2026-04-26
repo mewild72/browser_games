@@ -5,16 +5,19 @@
    *
    * Round 1: pass / order up / order up alone.
    * Round 2: pass / call (each non-rejected suit) / call alone.
-   * Dealer discard: lists the dealer's hand and asks them to pick one.
+   * Dealer discard: shows only an instruction to click a card in the
+   *   south Hand (the cards are already visible there — duplicating them
+   *   in a side panel just adds noise). The discard click handler lives
+   *   in `GameTable.svelte`, which already wires `onPlay` for the south
+   *   seat; that handler now branches on phase.
    *
    * Only renders interactive when it is the human's turn. Otherwise shows
    * a status line ("Waiting for east to bid…").
    *
    * Owner: svelte-component-architect
    */
-  import type { Action, Card, GameState, Suit } from '@/lib/types';
+  import type { Action, GameState, Suit } from '@/lib/types';
   import Toggle from './Toggle.svelte';
-  import CardView from './Card.svelte';
   import { HUMAN_SEAT } from '@/lib/game/state.svelte';
 
   type Props = {
@@ -53,10 +56,6 @@
   function callTrump(suit: Suit): void {
     onAction({ type: 'callTrump', seat: HUMAN_SEAT, suit, alone: goingAlone });
     goingAlone = false;
-  }
-
-  function discard(card: Card): void {
-    onAction({ type: 'discardKitty', seat: HUMAN_SEAT, card });
   }
 
   function suitGlyph(suit: Suit): string {
@@ -125,14 +124,7 @@
   {:else if gameState.phase === 'dealer-discard'}
     {#if isHumanTurn}
       <h4>Dealer discard</h4>
-      <p>Pick one card to discard.</p>
-      <ul class="discard-list">
-        {#each gameState.hands[HUMAN_SEAT] as card (`${card.suit}-${card.rank}-${card.deckId ?? 0}`)}
-          <li>
-            <CardView {card} onclick={() => discard(card)} />
-          </li>
-        {/each}
-      </ul>
+      <p class="instruction"><strong>Click a card from your hand to discard.</strong></p>
     {:else}
       <p class="status">Waiting for {activeSeat} to discard…</p>
     {/if}
@@ -173,12 +165,7 @@
     flex-wrap: wrap;
     align-items: center;
   }
-  .discard-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    gap: var(--space-2);
-    flex-wrap: wrap;
+  .instruction {
+    color: var(--text-on-felt);
   }
 </style>

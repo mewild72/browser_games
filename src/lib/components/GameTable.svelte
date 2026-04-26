@@ -8,7 +8,7 @@
    *
    * Owner: svelte-component-architect
    */
-  import type { Action, Card, GameState, Seat } from '@/lib/types';
+  import type { Action, Card, GameState, Seat, Suit } from '@/lib/types';
   import { legalActions } from '@/lib/euchre';
   import {
     HUMAN_SEAT,
@@ -43,6 +43,17 @@
   const showKitty = $derived(
     state.phase === 'bidding-round-1' || state.phase === 'bidding-round-2',
   );
+  /**
+   * Trump suit when known. Surfaced as a prop so `<TrickArea>` can
+   * render the prominent in-play trump indicator. Undefined whenever
+   * trump hasn't been called yet (bidding rounds, dealing, hand- and
+   * game-complete) — the indicator hides itself for those phases.
+   */
+  const trumpSuit = $derived<Suit | undefined>(extractTrumpSuit(state));
+
+  function extractTrumpSuit(s: GameState): Suit | undefined {
+    return s.phase === 'playing' ? s.trump : undefined;
+  }
 
   function extractHands(s: GameState): Record<Seat, readonly Card[]> {
     switch (s.phase) {
@@ -102,17 +113,29 @@
     return [];
   }
 
-  // Cards the human can play right now.
+  // Cards the human can interact with right now — playing-phase legal
+  // plays, OR (when south is the dealer) every card in the dealer's
+  // 6-card hand during the dealer-discard phase.
   const humanPlayable = $derived(legalHumanCards(state));
 
   function legalHumanCards(s: GameState): readonly Card[] {
-    if (s.phase !== 'playing') return [];
-    if (s.turn !== HUMAN_SEAT) return [];
-    const out: Card[] = [];
-    for (const a of legalActions(s, HUMAN_SEAT)) {
-      if (a.type === 'playCard') out.push(a.card);
+    if (s.phase === 'playing') {
+      if (s.turn !== HUMAN_SEAT) return [];
+      const out: Card[] = [];
+      for (const a of legalActions(s, HUMAN_SEAT)) {
+        if (a.type === 'playCard') out.push(a.card);
+      }
+      return out;
     }
-    return out;
+    if (s.phase === 'dealer-discard') {
+      if (s.dealer !== HUMAN_SEAT) return [];
+      const out: Card[] = [];
+      for (const a of legalActions(s, HUMAN_SEAT)) {
+        if (a.type === 'discardKitty') out.push(a.card);
+      }
+      return out;
+    }
+    return [];
   }
 
   /**
@@ -137,10 +160,16 @@
       lastFocusedTrickIndex = -1;
       return;
     }
-    if (state.phase !== 'playing') return;
+    // Auto-focus applies during playing-phase trick responses AND during
+    // dealer-discard (so a keyboard user can immediately Enter on a
+    // card to discard). Other phases use natural Tab order.
+    if (state.phase !== 'playing' && state.phase !== 'dealer-discard') return;
     // Use trick index as a one-shot guard so we focus once per trick the
-    // human leads / responds to, not every reactive tick.
-    const trickIndex = state.completedTricks.length;
+    // human leads / responds to, not every reactive tick. Dealer-discard
+    // is a single decision per hand, so reusing -1 / 0 boundary here is
+    // fine (the playable list goes empty as soon as the discard happens).
+    const trickIndex =
+      state.phase === 'playing' ? state.completedTricks.length : 0;
     if (trickIndex === lastFocusedTrickIndex) return;
     queueMicrotask(() => {
       // Refuse if a modal dialog is open.
@@ -166,8 +195,19 @@
   });
 
   function onPlayHumanCard(card: Card): void {
-    const action: Action = { type: 'playCard', seat: HUMAN_SEAT, card };
-    dispatchUser(action);
+    // The south Hand is the source of truth for both playing-phase plays
+    // and dealer-discard selections — branch on the current phase to
+    // dispatch the right action type. Anything else is a no-op (the
+    // card shouldn't be clickable in those phases).
+    if (state.phase === 'playing') {
+      const action: Action = { type: 'playCard', seat: HUMAN_SEAT, card };
+      dispatchUser(action);
+      return;
+    }
+    if (state.phase === 'dealer-discard' && state.dealer === HUMAN_SEAT) {
+      const action: Action = { type: 'discardKitty', seat: HUMAN_SEAT, card };
+      dispatchUser(action);
+    }
   }
 
   function onAction(action: Action): void {
@@ -241,7 +281,7 @@
       {#if showKitty}
         <Kitty turnedCard={turnedCard} kitty={kitty} turnedFaceDown={turnedFaceDown} />
       {:else}
-        <TrickArea plays={trickPlays} />
+        <TrickArea plays={trickPlays} trump={trumpSuit} />
       {/if}
     </section>
 
@@ -306,8 +346,15 @@
     /* Subtle felt texture: a tiny pseudo-noise via repeating radial-gradient
        dots. Keeps the surface from looking flat without an image. */
     background-blend-mode: normal;
+    /* Fill the entire <main>; <main> is `flex: 1 1 auto` inside the
+       app-shell so this expands to the full viewport height under the
+       topbar. */
+    flex: 1 1 auto;
+    inline-size: 100%;
     min-block-size: 100%;
     padding: var(--space-5) var(--space-4);
+    display: flex;
+    flex-direction: column;
   }
   .table::before {
     content: '';
@@ -339,15 +386,18 @@
       minmax(0, 2fr)
       minmax(0, 1fr)
       minmax(11rem, 0.85fr);
-    grid-template-rows: auto auto auto auto;
+    /* The middle row (where the play area lives) grows to absorb extra
+       vertical space so the felt fills the viewport on tall screens
+       without leaving an empty gap below the south seat. */
+    grid-template-rows: auto auto 1fr auto;
     grid-template-areas:
       'score   score   score    score   score'
       'log     north   north    north   panel'
       'log     west    center   east    panel'
       'log     south   south    south   panel';
     gap: var(--space-4);
-    max-inline-size: 80rem;
-    margin-inline: auto;
+    inline-size: 100%;
+    flex: 1 1 auto;
   }
   .score-area {
     grid-area: score;
@@ -422,7 +472,9 @@
   @media (max-width: 899px) {
     .grid {
       grid-template-columns: 1fr;
-      grid-template-rows: auto auto auto auto auto auto auto auto;
+      /* The center cell takes the leftover space so the felt still
+         reaches the bottom of the viewport on tall narrow screens. */
+      grid-template-rows: auto auto auto 1fr auto auto auto auto;
       grid-template-areas:
         'score'
         'north'

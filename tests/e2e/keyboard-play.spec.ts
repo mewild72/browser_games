@@ -39,6 +39,8 @@ test.describe('Keyboard play', () => {
   }) => {
     await page.addInitScript(() => {
       localStorage.setItem('euchre.pref.botDelayMs', '0');
+      // Skip the post-trick pause to keep the test under timeout.
+      localStorage.setItem('euchre.pref.trickPauseMs', '0');
     });
     await page.goto('/');
 

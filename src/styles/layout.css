@@ -15,7 +15,13 @@
  * --------------------------------------------------------------------*/
 
 .app-shell {
+  /* Full-viewport shell: the felt fills the entire visible area, with the
+   * topbar floating on top. `100dvh` accounts for mobile viewport chrome
+   * (URL bars that retract on scroll); the older `100vh` works as a
+   * fallback for browsers that don't yet support dvh. */
+  min-block-size: 100vh;
   min-block-size: 100dvh;
+  inline-size: 100%;
   display: flex;
   flex-direction: column;
   background-color: var(--bg-app);
@@ -25,9 +31,12 @@
 }
 
 .app-shell > main {
+  /* The main region grows to consume the rest of the viewport so the
+   * felt always reaches the bottom edge regardless of content height. */
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
+  min-block-size: 0;
 }
 
 .topbar {

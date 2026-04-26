@@ -28,7 +28,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { defaults } from '@/lib/types';
-import type { GameState, HandResult, Variants } from '@/lib/types';
+import type {
+  Card,
+  GameState,
+  HandResult,
+  PlayingState,
+  TrickPlay,
+  Variants,
+} from '@/lib/types';
 import { clearPref, getPref, setPref } from '@/lib/storage';
 
 /* ------------------------------------------------------------------ */
@@ -90,6 +97,62 @@ function makeHandCompleteState(handId: string): GameState {
     dealer: 'north',
     score: { ns: 0, ew: 0 },
     result,
+  };
+}
+
+/**
+ * A `PlayingState` poised for the human (south) to play the 4th card
+ * of a trick. West led, then north and east followed suit; south's
+ * hand has only one card (the spade 10) so it's the only legal play.
+ * Trump = clubs so spades is the led suit and the 10S follows suit
+ * normally.
+ *
+ * One trick is already complete, so the engine will return another
+ * `playing` state on the 4th-card play (rather than transitioning to
+ * `hand-complete`). That keeps the post-pause assertion clean: when
+ * `displayedTrick` clears, the human's seat owns the next lead and
+ * the bot-loop won't fire.
+ */
+function makePlayingStateAwaiting4thCard(): PlayingState {
+  const wLead: TrickPlay = { seat: 'west', card: { suit: 'spades', rank: '9' } };
+  const nPlay: TrickPlay = { seat: 'north', card: { suit: 'spades', rank: 'Q' } };
+  const ePlay: TrickPlay = { seat: 'east', card: { suit: 'spades', rank: 'K' } };
+  const southCard: Card = { suit: 'spades', rank: '10' };
+  return {
+    phase: 'playing',
+    gameId: 'g-trick-pause' as PlayingState['gameId'],
+    handId: 'h-trick-pause' as PlayingState['handId'],
+    variants: defaults,
+    dealer: 'north',
+    score: { ns: 0, ew: 0 },
+    hands: {
+      north: [],
+      east: [],
+      south: [southCard],
+      west: [],
+    },
+    trump: 'clubs',
+    maker: 'ns',
+    makerSeat: 'north',
+    alone: false,
+    sittingOut: null,
+    orderedUpInRound: 1,
+    trickLeader: 'west',
+    turn: 'south',
+    currentTrick: [wLead, nPlay, ePlay],
+    completedTricks: [
+      {
+        leader: 'north',
+        plays: [
+          { seat: 'north', card: { suit: 'hearts', rank: '9' } },
+          { seat: 'east', card: { suit: 'hearts', rank: '10' } },
+          { seat: 'south', card: { suit: 'hearts', rank: 'J' } },
+          { seat: 'west', card: { suit: 'hearts', rank: 'Q' } },
+        ],
+        winner: 'west',
+      },
+    ],
+    tricksWon: { makers: 0, defenders: 1 },
   };
 }
 
@@ -180,6 +243,384 @@ describe('state-module init', () => {
 /* ------------------------------------------------------------------ */
 /* persist-hand effect: idempotent under reactive churn               */
 /* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* setTrickPause persists to localStorage                             */
+/* ------------------------------------------------------------------ */
+
+describe('setTrickPause', () => {
+  beforeEach(() => {
+    clearPref('trickPauseMs');
+  });
+
+  afterEach(() => {
+    clearPref('trickPauseMs');
+    vi.resetModules();
+  });
+
+  it('updates the trickPauseMs rune AND writes the trickPauseMs pref', async () => {
+    vi.resetModules();
+    const mod = await import('./state.svelte');
+    mod.setTrickPause(2500);
+    expect(mod.trickPauseMs.value).toBe(2500);
+    expect(getPref('trickPauseMs')).toBe(2500);
+  });
+
+  it('clamps negative inputs to 0 and excessive inputs to 5000', async () => {
+    vi.resetModules();
+    const mod = await import('./state.svelte');
+    mod.setTrickPause(-100);
+    expect(mod.trickPauseMs.value).toBe(0);
+    mod.setTrickPause(99_999);
+    expect(mod.trickPauseMs.value).toBe(5000);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* trickPauseMs init reads from prefs                                 */
+/* ------------------------------------------------------------------ */
+
+describe('trickPauseMs init', () => {
+  afterEach(() => {
+    clearPref('trickPauseMs');
+    vi.resetModules();
+  });
+
+  it('reads the persisted trickPauseMs and applies it to the rune', async () => {
+    setPref('trickPauseMs', 1500);
+    vi.resetModules();
+    const mod = await import('./state.svelte');
+    expect(mod.trickPauseMs.value).toBe(1500);
+  });
+
+  it('falls back to the default (5000 ms) when no pref is stored', async () => {
+    clearPref('trickPauseMs');
+    vi.resetModules();
+    const mod = await import('./state.svelte');
+    expect(mod.trickPauseMs.value).toBe(5000);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Trick-display pause: dispatchUser path                             */
+/* ------------------------------------------------------------------ */
+
+describe('trick-display pause', () => {
+  beforeEach(() => {
+    storageMocks.saveHand.mockClear();
+    storageMocks.saveGame.mockClear();
+    storageMocks.updateGame.mockClear();
+    // Ensure a deterministic pause for the test.
+    stateMod.setTrickPause(800);
+    // Push the bot-loop timeout out so it never wakes during the test.
+    stateMod.setBotDelay(5000);
+    // Cancel any leftover displayed trick from a previous test.
+    stateMod.displayedTrick.value = null;
+  });
+
+  afterEach(() => {
+    stateMod.displayedTrick.value = null;
+    vi.useRealTimers();
+  });
+
+  it('after the 4th card is played, displayedTrick is set with the four plays', () => {
+    vi.useFakeTimers();
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    try {
+      stateMod.game.value = makePlayingStateAwaiting4thCard();
+      flushSync();
+      // Sanity: not yet paused.
+      expect(stateMod.displayedTrick.value).toBeNull();
+
+      // Human plays the only legal card.
+      const ok = stateMod.dispatchUser({
+        type: 'playCard',
+        seat: 'south',
+        card: { suit: 'spades', rank: '10' },
+      });
+      flushSync();
+      expect(ok).toBe(true);
+
+      // The trick-pause helper should now hold the just-completed
+      // four-play trick on the display rune.
+      const dt = stateMod.displayedTrick.value;
+      expect(dt).not.toBeNull();
+      expect(dt!.plays).toHaveLength(4);
+      // 4th card is the human's play.
+      expect(dt!.plays[3]).toEqual({
+        seat: 'south',
+        card: { suit: 'spades', rank: '10' },
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('clears displayedTrick after trickPauseMs elapses (timer-driven)', () => {
+    vi.useFakeTimers();
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    try {
+      stateMod.game.value = makePlayingStateAwaiting4thCard();
+      flushSync();
+      stateMod.dispatchUser({
+        type: 'playCard',
+        seat: 'south',
+        card: { suit: 'spades', rank: '10' },
+      });
+      flushSync();
+      expect(stateMod.displayedTrick.value).not.toBeNull();
+
+      // Advance just under the pause: still frozen.
+      vi.advanceTimersByTime(799);
+      expect(stateMod.displayedTrick.value).not.toBeNull();
+
+      // Cross the threshold: the timer fires and clears the rune.
+      vi.advanceTimersByTime(2);
+      expect(stateMod.displayedTrick.value).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('with trickPauseMs === 0, no pause is taken (legacy behaviour)', () => {
+    stateMod.setTrickPause(0);
+    vi.useFakeTimers();
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    try {
+      stateMod.game.value = makePlayingStateAwaiting4thCard();
+      flushSync();
+      stateMod.dispatchUser({
+        type: 'playCard',
+        seat: 'south',
+        card: { suit: 'spades', rank: '10' },
+      });
+      flushSync();
+      // Pause is 0 ms — displayedTrick must remain null so the next
+      // trick renders immediately.
+      expect(stateMod.displayedTrick.value).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('startNewGameSession cancels a pending trick-pause timer', async () => {
+    vi.useFakeTimers();
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    try {
+      stateMod.game.value = makePlayingStateAwaiting4thCard();
+      flushSync();
+      stateMod.dispatchUser({
+        type: 'playCard',
+        seat: 'south',
+        card: { suit: 'spades', rank: '10' },
+      });
+      flushSync();
+      expect(stateMod.displayedTrick.value).not.toBeNull();
+
+      // Switch to real timers so startNewGameSession's awaited
+      // saveGame promise can resolve, then synchronously assert that
+      // the pause was cleared (it is — setting displayedTrick = null
+      // is synchronous inside startNewGameSession).
+      vi.useRealTimers();
+      await stateMod.startNewGameSession({ difficulty: 'easy' });
+      expect(stateMod.displayedTrick.value).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Auto-play last card                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A `PlayingState` where it's the human's turn to LEAD a fresh trick
+ * (not respond to one) with a single card in hand. The bot loop won't
+ * fire because all four hands sit at zero/one cards; only the auto-play
+ * effect should produce an action.
+ */
+function makePlayingStateHumanLeadsOneCardLeft(): PlayingState {
+  const southCard: Card = { suit: 'spades', rank: 'A' };
+  return {
+    phase: 'playing',
+    gameId: 'g-auto-play' as PlayingState['gameId'],
+    handId: 'h-auto-play' as PlayingState['handId'],
+    variants: defaults,
+    dealer: 'north',
+    score: { ns: 0, ew: 0 },
+    hands: {
+      north: [{ suit: 'hearts', rank: 'A' }],
+      east: [{ suit: 'diamonds', rank: 'A' }],
+      south: [southCard],
+      west: [{ suit: 'spades', rank: 'K' }],
+    },
+    trump: 'clubs',
+    maker: 'ns',
+    makerSeat: 'north',
+    alone: false,
+    sittingOut: null,
+    orderedUpInRound: 1,
+    trickLeader: 'south',
+    turn: 'south',
+    currentTrick: [],
+    completedTricks: [],
+    tricksWon: { makers: 0, defenders: 0 },
+  };
+}
+
+describe('auto-play last card', () => {
+  beforeEach(() => {
+    storageMocks.saveHand.mockClear();
+    storageMocks.saveGame.mockClear();
+    storageMocks.updateGame.mockClear();
+    // Push the bot-loop timeout out so it never wakes during the test.
+    stateMod.setBotDelay(5000);
+    // Disable trick pause to avoid orthogonal timer interactions.
+    stateMod.setTrickPause(0);
+    stateMod.displayedTrick.value = null;
+  });
+
+  afterEach(() => {
+    stateMod.displayedTrick.value = null;
+  });
+
+  it('dispatches playCard automatically when human has one card and it is their turn', () => {
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    // Use real timers here so the actual setTimeout fires, then await
+    // its 500 ms delay. Fake timers in conjunction with Svelte's $effect
+    // re-run cycle race in a way that leaves the effect un-fired in
+    // jsdom; using real timers reliably exercises the path.
+    return new Promise<void>((resolve, reject) => {
+      try {
+        stateMod.game.value = makePlayingStateHumanLeadsOneCardLeft();
+        flushSync();
+        // Wait a bit longer than the auto-play delay (500 ms cap).
+        setTimeout(() => {
+          try {
+            flushSync();
+            const cur = stateMod.game.value;
+            expect(cur.phase).toBe('playing');
+            if (cur.phase === 'playing') {
+              expect(cur.hands.south.length).toBe(0);
+            }
+            cleanup();
+            resolve();
+          } catch (err) {
+            cleanup();
+            reject(err);
+          }
+        }, 700);
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
+  });
+
+  it('does not auto-play while a trick-display pause is active', () => {
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    return new Promise<void>((resolve, reject) => {
+      try {
+        // Manually freeze a displayed trick so the auto-play guard kicks in.
+        stateMod.displayedTrick.value = {
+          leader: 'west',
+          plays: [
+            { seat: 'west', card: { suit: 'hearts', rank: '9' } },
+            { seat: 'north', card: { suit: 'hearts', rank: '10' } },
+            { seat: 'east', card: { suit: 'hearts', rank: 'J' } },
+            { seat: 'south', card: { suit: 'hearts', rank: 'Q' } },
+          ],
+          winner: 'south',
+        };
+        stateMod.game.value = makePlayingStateHumanLeadsOneCardLeft();
+        flushSync();
+        // Wait past the would-be auto-play threshold. The displayedTrick
+        // guard should suppress the dispatch entirely.
+        setTimeout(() => {
+          try {
+            flushSync();
+            const cur = stateMod.game.value;
+            expect(cur.phase).toBe('playing');
+            if (cur.phase === 'playing') {
+              expect(cur.hands.south.length).toBe(1);
+            }
+            stateMod.displayedTrick.value = null;
+            cleanup();
+            resolve();
+          } catch (err) {
+            stateMod.displayedTrick.value = null;
+            cleanup();
+            reject(err);
+          }
+        }, 700);
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
+  });
+
+  it('does nothing when the human has more than one card', () => {
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    return new Promise<void>((resolve, reject) => {
+      try {
+        const base = makePlayingStateHumanLeadsOneCardLeft();
+        stateMod.game.value = {
+          ...base,
+          hands: {
+            ...base.hands,
+            south: [
+              { suit: 'spades', rank: 'A' },
+              { suit: 'spades', rank: 'K' },
+            ],
+          },
+        };
+        flushSync();
+        setTimeout(() => {
+          try {
+            flushSync();
+            const cur = stateMod.game.value;
+            expect(cur.phase).toBe('playing');
+            if (cur.phase === 'playing') {
+              // The human still has two cards — no auto-play.
+              expect(cur.hands.south.length).toBe(2);
+            }
+            cleanup();
+            resolve();
+          } catch (err) {
+            cleanup();
+            reject(err);
+          }
+        }, 700);
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
+  });
+});
 
 describe('persist-hand effect (Bug #2)', () => {
   beforeEach(() => {
