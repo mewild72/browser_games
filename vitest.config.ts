@@ -12,6 +12,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    setupFiles: ['./tests/setup-indexeddb.ts'],
     include: ['src/**/*.{test,spec}.{ts,js}', 'tests/**/*.{test,spec}.{ts,js}'],
     exclude: ['tests/e2e/**', 'node_modules/**', 'dist/**'],
   },
