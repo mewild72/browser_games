@@ -19,6 +19,13 @@ test.describe('Golden path', () => {
       // a hand quickly and would otherwise wait 5s × 5 tricks. The
       // pause itself is exercised by the unit tests.
       localStorage.setItem('euchre.pref.trickPauseMs', '0');
+      // Auto-advance defaults to on; with `trickPauseMs=0` the next
+      // hand would be dealt 300 ms after the 5th trick resolves,
+      // which races the "Hand complete" heading assertion below.
+      // Disable auto-advance so the golden path exercises the manual
+      // "Next hand" click. The auto-advance behaviour itself is
+      // covered by unit tests in `state.svelte.test.ts`.
+      localStorage.setItem('euchre.pref.autoAdvanceHands', 'false');
     });
 
     await page.goto('/');

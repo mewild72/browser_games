@@ -23,6 +23,11 @@ test.describe('Stats', () => {
       // Skip the post-trick display pause; the test plays a hand and
       // would otherwise wait 5s per trick.
       localStorage.setItem('euchre.pref.trickPauseMs', '0');
+      // `playHandToCompletion` asserts the "Hand complete" heading is
+      // still visible after its loop exits. Auto-advance with
+      // `trickPauseMs=0` would race that assertion by dispatching the
+      // next hand 300 ms after the 5th trick resolves.
+      localStorage.setItem('euchre.pref.autoAdvanceHands', 'false');
     });
 
     await page.goto('/');

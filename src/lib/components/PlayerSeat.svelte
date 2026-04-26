@@ -8,7 +8,9 @@
    *
    * Owner: svelte-component-architect
    */
-  import type { Card, Seat } from '@/lib/types';
+  import type { Card, CompletedTrick, Seat } from '@/lib/types';
+  import { displayedTrick } from '@/lib/game/state.svelte';
+  import CardView from './Card.svelte';
   import Hand from './Hand.svelte';
 
   type Props = {
@@ -35,6 +37,22 @@
     playable = [],
     onPlay,
   }: Props = $props();
+
+  /**
+   * The just-completed trick to render *at this seat* — non-null only
+   * when the post-trick pause is active AND this seat is the trick's
+   * winner. Each `<PlayerSeat>` evaluates this independently so exactly
+   * one of the four seats renders the overlay per pause.
+   *
+   * The trick may carry 3 or 4 plays — a lone-hand trick has only 3
+   * (the lone caller's partner sits out). The overlay renders whatever
+   * count is on the trick rather than hardcoding four.
+   */
+  const wonTrick = $derived<CompletedTrick | null>(
+    displayedTrick.value !== null && displayedTrick.value.winner === seat
+      ? displayedTrick.value
+      : null,
+  );
 </script>
 
 <section
@@ -73,10 +91,32 @@
     onPlay={onPlay}
     ariaLabel={`${seat} hand, ${cards.length} ${cards.length === 1 ? 'card' : 'cards'}`}
   />
+  {#if wonTrick !== null}
+    <!--
+      Just-won trick rendered next to the seat that won it. The four (or
+      three, for a lone hand) cards from the trick are arrayed in a small
+      cluster so the human can see whose play won where. Only one
+      `<PlayerSeat>` ever renders this at a time because each seat
+      evaluates `displayedTrick.value.winner === seat` independently.
+
+      `aria-hidden` is set because trick winners are already announced via
+      the action log's live region; the overlay is purely visual.
+    -->
+    <div class="won-trick" aria-hidden="true">
+      <ul class="won-trick-cards">
+        {#each wonTrick.plays as play (play.seat)}
+          <li class="won-trick-card" data-seat={play.seat}>
+            <CardView card={play.card} />
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
 </section>
 
 <style>
   .seat {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -89,6 +129,57 @@
       box-shadow var(--duration-normal) var(--easing-standard),
       border-color var(--duration-normal) var(--easing-standard),
       opacity var(--duration-fast) var(--easing-standard);
+  }
+  /*
+    The won-trick overlay clusters the just-completed plays near the
+    winning seat. Cards are rendered at a slightly reduced size and
+    arrayed in a 2x2-ish flex grid so 3-card (lone hand) and 4-card
+    tricks both look balanced. The cluster sits inside the seat's box
+    underneath the hand so it visually "lands" on top of the winner.
+  */
+  .won-trick {
+    display: flex;
+    justify-content: center;
+    margin-block-start: var(--space-1);
+    animation: won-trick-in var(--duration-normal) var(--easing-standard);
+  }
+  .won-trick-cards {
+    list-style: none;
+    margin: 0;
+    padding: var(--space-2);
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    gap: var(--space-1);
+    border-radius: var(--radius-md);
+    background-color: hsla(140, 30%, 12%, 0.65);
+    box-shadow:
+      0 4px 14px hsla(0, 0%, 0%, 0.35),
+      0 0 0 1px var(--accent);
+  }
+  .won-trick-card {
+    /*
+      Scale the cards down so the overlay doesn't crowd the seat. The
+      Card component sets its own dimensions, so we transform the
+      wrapping <li> rather than the card element itself.
+    */
+    transform: scale(0.7);
+    transform-origin: center;
+    margin: calc(var(--space-2) * -1);
+  }
+  @keyframes won-trick-in {
+    from {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.92);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .won-trick {
+      animation: none;
+    }
   }
   .seat.active {
     border-color: var(--accent);

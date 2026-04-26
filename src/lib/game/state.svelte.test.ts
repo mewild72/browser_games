@@ -447,6 +447,89 @@ describe('trick-display pause', () => {
 /* ------------------------------------------------------------------ */
 
 /**
+ * A `PlayingState` where the human (south) is responding to a led
+ * trick of spades and holds two cards: one spade and one heart. Trump
+ * is clubs so neither card is a bower. The follow-suit rule makes the
+ * spade the SOLE legal play even though south has two cards.
+ *
+ * Used to verify the auto-play effect's generalised "1 legal play"
+ * trigger fires when the rules constrain south to a single option,
+ * not just when the hand has 1 card.
+ */
+function makePlayingStateHumanHasOneLegalPlay(): PlayingState {
+  const wLead: TrickPlay = { seat: 'west', card: { suit: 'spades', rank: '9' } };
+  const nPlay: TrickPlay = { seat: 'north', card: { suit: 'spades', rank: 'Q' } };
+  const ePlay: TrickPlay = { seat: 'east', card: { suit: 'spades', rank: 'K' } };
+  return {
+    phase: 'playing',
+    gameId: 'g-auto-legal' as PlayingState['gameId'],
+    handId: 'h-auto-legal' as PlayingState['handId'],
+    variants: defaults,
+    dealer: 'north',
+    score: { ns: 0, ew: 0 },
+    hands: {
+      north: [],
+      east: [],
+      // Two cards but only the spade follows suit — the heart is
+      // illegal while spades is the led suit.
+      south: [
+        { suit: 'spades', rank: '10' },
+        { suit: 'hearts', rank: 'A' },
+      ],
+      west: [],
+    },
+    trump: 'clubs',
+    maker: 'ns',
+    makerSeat: 'north',
+    alone: false,
+    sittingOut: null,
+    orderedUpInRound: 1,
+    trickLeader: 'west',
+    turn: 'south',
+    currentTrick: [wLead, nPlay, ePlay],
+    completedTricks: [],
+    tricksWon: { makers: 0, defenders: 0 },
+  };
+}
+
+/**
+ * A `PlayingState` where the human leads a fresh trick with two
+ * different-suit cards and trump is a third suit — every card is a
+ * legal play (no led suit when leading), so the auto-play effect must
+ * NOT fire. Used as the negative case for the "1 legal play" rule.
+ */
+function makePlayingStateHumanLeadsTwoLegalPlays(): PlayingState {
+  return {
+    phase: 'playing',
+    gameId: 'g-auto-multi' as PlayingState['gameId'],
+    handId: 'h-auto-multi' as PlayingState['handId'],
+    variants: defaults,
+    dealer: 'north',
+    score: { ns: 0, ew: 0 },
+    hands: {
+      north: [{ suit: 'hearts', rank: 'A' }],
+      east: [{ suit: 'diamonds', rank: 'A' }],
+      south: [
+        { suit: 'spades', rank: 'A' },
+        { suit: 'hearts', rank: 'K' },
+      ],
+      west: [{ suit: 'spades', rank: 'K' }],
+    },
+    trump: 'clubs',
+    maker: 'ns',
+    makerSeat: 'north',
+    alone: false,
+    sittingOut: null,
+    orderedUpInRound: 1,
+    trickLeader: 'south',
+    turn: 'south',
+    currentTrick: [],
+    completedTricks: [],
+    tricksWon: { makers: 0, defenders: 0 },
+  };
+}
+
+/**
  * A `PlayingState` where it's the human's turn to LEAD a fresh trick
  * (not respond to one) with a single card in hand. The bot loop won't
  * fire because all four hands sit at zero/one cards; only the auto-play
@@ -614,6 +697,333 @@ describe('auto-play last card', () => {
             reject(err);
           }
         }, 700);
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
+  });
+
+  it('auto-plays when the human has multiple cards but only one legal follow-suit play', () => {
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    return new Promise<void>((resolve, reject) => {
+      try {
+        // South holds [spade 10, heart A]; spades was led by west, north
+        // and east already followed. Only the spade can be played; the
+        // heart is illegal under follow-suit. Auto-play should fire and
+        // dispatch the spade.
+        stateMod.game.value = makePlayingStateHumanHasOneLegalPlay();
+        flushSync();
+        setTimeout(() => {
+          try {
+            flushSync();
+            const cur = stateMod.game.value;
+            expect(cur.phase).toBe('playing');
+            if (cur.phase === 'playing') {
+              // South must still have the heart (the spade was auto-played).
+              expect(cur.hands.south.length).toBe(1);
+              const remaining = cur.hands.south[0]!;
+              expect(remaining.suit).toBe('hearts');
+              // Trick advanced to a completed state — completedTricks
+              // grew, OR the engine transitioned to hand-complete /
+              // game-complete. Either way the spade left south's hand.
+            }
+            cleanup();
+            resolve();
+          } catch (err) {
+            cleanup();
+            reject(err);
+          }
+        }, 700);
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
+  });
+
+  it('does not auto-play when the human has multiple legal plays', () => {
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    return new Promise<void>((resolve, reject) => {
+      try {
+        // South leads (no led suit). Two different-suit cards in hand —
+        // both legal. Auto-play must NOT fire; the user must choose.
+        stateMod.game.value = makePlayingStateHumanLeadsTwoLegalPlays();
+        flushSync();
+        setTimeout(() => {
+          try {
+            flushSync();
+            const cur = stateMod.game.value;
+            expect(cur.phase).toBe('playing');
+            if (cur.phase === 'playing') {
+              // No card was auto-played — south still holds both.
+              expect(cur.hands.south.length).toBe(2);
+              // And no card joined the trick from south.
+              expect(
+                cur.currentTrick.some((p) => p.seat === 'south'),
+              ).toBe(false);
+            }
+            cleanup();
+            resolve();
+          } catch (err) {
+            cleanup();
+            reject(err);
+          }
+        }, 700);
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Auto-advance hands                                                 */
+/* ------------------------------------------------------------------ */
+
+describe('setAutoAdvanceHands', () => {
+  beforeEach(() => {
+    clearPref('autoAdvanceHands');
+  });
+
+  afterEach(() => {
+    clearPref('autoAdvanceHands');
+    vi.resetModules();
+  });
+
+  it('updates the rune AND writes to the autoAdvanceHands pref', async () => {
+    vi.resetModules();
+    const mod = await import('./state.svelte');
+    mod.setAutoAdvanceHands(false);
+    expect(mod.autoAdvanceHands.value).toBe(false);
+    expect(getPref('autoAdvanceHands')).toBe(false);
+    mod.setAutoAdvanceHands(true);
+    expect(mod.autoAdvanceHands.value).toBe(true);
+    expect(getPref('autoAdvanceHands')).toBe(true);
+  });
+});
+
+describe('autoAdvanceHands init', () => {
+  afterEach(() => {
+    clearPref('autoAdvanceHands');
+    vi.resetModules();
+  });
+
+  it('reads `true` from the persisted pref and applies it to the rune', async () => {
+    setPref('autoAdvanceHands', true);
+    vi.resetModules();
+    const mod = await import('./state.svelte');
+    expect(mod.autoAdvanceHands.value).toBe(true);
+  });
+
+  it('reads `false` from the persisted pref and applies it to the rune', async () => {
+    setPref('autoAdvanceHands', false);
+    vi.resetModules();
+    const mod = await import('./state.svelte');
+    expect(mod.autoAdvanceHands.value).toBe(false);
+  });
+
+  it('defaults to `true` when no pref is stored', async () => {
+    clearPref('autoAdvanceHands');
+    vi.resetModules();
+    const mod = await import('./state.svelte');
+    expect(mod.autoAdvanceHands.value).toBe(true);
+  });
+});
+
+describe('auto-advance hands effect', () => {
+  beforeEach(() => {
+    storageMocks.saveHand.mockClear();
+    storageMocks.saveGame.mockClear();
+    storageMocks.updateGame.mockClear();
+    // Push the bot loop out so it can't dispatch in the background.
+    stateMod.setBotDelay(5000);
+    // Default to no trick-pause noise; tests opt into it where needed.
+    stateMod.setTrickPause(0);
+    stateMod.displayedTrick.value = null;
+  });
+
+  afterEach(() => {
+    stateMod.displayedTrick.value = null;
+    stateMod.setAutoAdvanceHands(true);
+  });
+
+  it('auto-advances after the grace period when enabled', () => {
+    stateMod.setAutoAdvanceHands(true);
+    // Real timers — fake timers race the Svelte $effect re-run cycle in
+    // jsdom, mirroring the rationale in the auto-play tests above.
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    return new Promise<void>((resolve, reject) => {
+      try {
+        // Drop the rune into hand-complete with no displayed trick — the
+        // effect's conditions are met so it schedules the auto-advance.
+        stateMod.game.value = makeHandCompleteState('auto-h-1');
+        flushSync();
+        expect(stateMod.game.value.phase).toBe('hand-complete');
+
+        // Wait past the 300 ms grace window plus a buffer so the timer
+        // callback has fired and Svelte has reacted to the resulting
+        // `game.value = next` write.
+        setTimeout(() => {
+          try {
+            flushSync();
+            // `dispatchNextHand` invoked the engine's `nextHand`, which
+            // deals a fresh hand and returns a `bidding-round-1` state.
+            // The key assertion is that we left `hand-complete`.
+            expect(stateMod.game.value.phase).not.toBe('hand-complete');
+            cleanup();
+            resolve();
+          } catch (err) {
+            cleanup();
+            reject(err);
+          }
+        }, 500);
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
+  });
+
+  it('does NOT auto-advance when the toggle is off', () => {
+    stateMod.setAutoAdvanceHands(false);
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    return new Promise<void>((resolve, reject) => {
+      try {
+        stateMod.game.value = makeHandCompleteState('manual-h-1');
+        flushSync();
+        setTimeout(() => {
+          try {
+            flushSync();
+            // State is still hand-complete — no auto-dispatch happened.
+            expect(stateMod.game.value.phase).toBe('hand-complete');
+            cleanup();
+            resolve();
+          } catch (err) {
+            cleanup();
+            reject(err);
+          }
+        }, 500);
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
+  });
+
+  it('does NOT auto-advance from `game-complete` even when the toggle is on', () => {
+    stateMod.setAutoAdvanceHands(true);
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    return new Promise<void>((resolve, reject) => {
+      try {
+        const gameComplete: GameState = {
+          phase: 'game-complete',
+          gameId: 'g-over' as GameState['gameId'],
+          variants: defaults,
+          dealer: 'north',
+          score: { ns: 10, ew: 6 },
+          winner: 'ns',
+          hands: [],
+        };
+        stateMod.game.value = gameComplete;
+        flushSync();
+        setTimeout(() => {
+          try {
+            flushSync();
+            // No transition — game-complete is sticky for the
+            // auto-advance effect (it explicitly checks
+            // `phase === 'hand-complete'`).
+            expect(stateMod.game.value.phase).toBe('game-complete');
+            cleanup();
+            resolve();
+          } catch (err) {
+            cleanup();
+            reject(err);
+          }
+        }, 500);
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
+  });
+
+  it('with `trickPauseMs === 0`, fires after the grace window with no pause to wait for', () => {
+    stateMod.setAutoAdvanceHands(true);
+    stateMod.setTrickPause(0);
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    return new Promise<void>((resolve, reject) => {
+      try {
+        // displayedTrick stays null throughout because pause is 0.
+        stateMod.game.value = makeHandCompleteState('zero-pause-h-1');
+        flushSync();
+        expect(stateMod.displayedTrick.value).toBeNull();
+        setTimeout(() => {
+          try {
+            flushSync();
+            // Even without a trick pause to wait for, the auto-advance
+            // effect fires after the grace window.
+            expect(stateMod.game.value.phase).not.toBe('hand-complete');
+            cleanup();
+            resolve();
+          } catch (err) {
+            cleanup();
+            reject(err);
+          }
+        }, 500);
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
+  });
+
+  it('cancels a pending auto-advance when the toggle is flipped off mid-grace', () => {
+    stateMod.setAutoAdvanceHands(true);
+    const cleanup = $effect.root(() => {
+      stateMod.installEffects();
+      return () => undefined;
+    });
+    return new Promise<void>((resolve, reject) => {
+      try {
+        stateMod.game.value = makeHandCompleteState('cancel-h-1');
+        flushSync();
+        // Halfway through the grace window, disable auto-advance.
+        setTimeout(() => {
+          stateMod.setAutoAdvanceHands(false);
+          flushSync();
+        }, 100);
+        setTimeout(() => {
+          try {
+            flushSync();
+            // The cancelled timer must NOT have advanced the hand.
+            expect(stateMod.game.value.phase).toBe('hand-complete');
+            cleanup();
+            resolve();
+          } catch (err) {
+            cleanup();
+            reject(err);
+          }
+        }, 600);
       } catch (err) {
         cleanup();
         reject(err);

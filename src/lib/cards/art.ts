@@ -1,15 +1,19 @@
 /**
  * Card-art asset map.
  *
- * Bundles every optimized WebP face / back from `src/assets/cards/optimized/`
- * via Vite's `import.meta.glob` (eager). Each glob match becomes a hashed
- * URL emitted under `dist/assets/` at build time, fully relative-path
- * compatible with `file://`.
+ * Bundles every optimized WebP face / back / suit symbol from
+ * `src/assets/cards/optimized/` via Vite's `import.meta.glob` (eager). Each
+ * glob match becomes a hashed URL emitted under `dist/assets/` at build
+ * time, fully relative-path compatible with `file://`.
  *
  * Public surface:
  *  - `faceUrls`         — keyed by `${rank}${suit}` (e.g. `"AC"`, `"10S"`,
  *                         `"JK1"` for jokers)
  *  - `backUrls`         — keyed by back id (e.g. `"classic-blue"`)
+ *  - `suitUrls`         — keyed by `Suit` (`"clubs"`, `"diamonds"`,
+ *                         `"hearts"`, `"spades"`); files on disk are
+ *                         singular (`club.webp` etc.) and are mapped to
+ *                         the plural type explicitly
  *  - `cardUrl(card)`    — given a `Card`, return the matching face URL or
  *                         `undefined` if no asset is available
  *  - `cardBacks`        — manifest-driven list of backs with labels and
@@ -61,6 +65,20 @@ export type CardManifest = {
     readonly label: string;
     readonly path: string;
   }>;
+  /**
+   * Optional ornate suit-symbol entries. Keyed by singular suit name
+   * (`club`, `diamond`, `heart`, `spade`); the runtime mapping in
+   * `suitUrls` translates these to the plural `Suit` type used elsewhere.
+   */
+  readonly suits?: Readonly<
+    Record<
+      string,
+      {
+        readonly label: string;
+        readonly path: string;
+      }
+    >
+  >;
 };
 
 const manifest: CardManifest = manifestJson as CardManifest;
@@ -109,6 +127,11 @@ const backModules = import.meta.glob<string>(
   { eager: true, import: 'default' },
 );
 
+const suitModules = import.meta.glob<string>(
+  '/src/assets/cards/optimized/suits/*.webp',
+  { eager: true, import: 'default' },
+);
+
 /**
  * Map of face URLs keyed by `${rank}${suitLetter}` (e.g. `AC`, `10S`).
  * Joker entries (`JK1`, `JK2`) appear when the bundle includes them.
@@ -122,6 +145,38 @@ export const faceUrls: Readonly<Record<string, string>> = Object.freeze(
  */
 export const backUrls: Readonly<Record<string, string>> = Object.freeze(
   buildUrlMap(backModules),
+);
+
+/**
+ * Map of ornate suit-symbol URLs keyed by the `Suit` type. The files on
+ * disk are named in the singular (`club.webp`, `diamond.webp`,
+ * `heart.webp`, `spade.webp`) but the `Suit` type uses plurals
+ * (`clubs`, `diamonds`, `hearts`, `spades`), so the mapping is built
+ * explicitly from a singular→plural lookup. Entries missing from the
+ * bundle are dropped so consumers can fall back to text/glyph rendering.
+ */
+const suitFileToType: Readonly<Record<string, Suit>> = Object.freeze({
+  club: 'clubs',
+  diamond: 'diamonds',
+  heart: 'hearts',
+  spade: 'spades',
+});
+
+function buildSuitUrlMap(modules: Record<string, string>): Partial<Record<Suit, string>> {
+  const out: Partial<Record<Suit, string>> = {};
+  const raw = buildUrlMap(modules);
+  for (const fileBase in raw) {
+    const suit = suitFileToType[fileBase];
+    if (suit === undefined) continue;
+    const url = raw[fileBase];
+    if (url === undefined) continue;
+    out[suit] = url;
+  }
+  return out;
+}
+
+export const suitUrls: Readonly<Partial<Record<Suit, string>>> = Object.freeze(
+  buildSuitUrlMap(suitModules),
 );
 
 /* ------------------------------------------------------------------ */

@@ -19,7 +19,7 @@ import type {
   Variants,
 } from '@/lib/types';
 import { defaults } from '@/lib/types';
-import { defaultRng } from '@/lib/euchre';
+import { defaultRng, legalActions } from '@/lib/euchre';
 import type { Bot, Difficulty } from '@/lib/ai';
 import {
   getPref,
@@ -45,7 +45,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** Default delay (ms) between bot actions so the human can read the table. */
-const DEFAULT_BOT_DELAY_MS = 600;
+const DEFAULT_BOT_DELAY_MS = 1000;
 
 /** Default pause (ms) after a trick completes so the player can see the 4th card. */
 const DEFAULT_TRICK_PAUSE_MS = 5000;
@@ -58,6 +58,25 @@ const BOT_DELAY_KEY = 'botDelayMs';
 
 /** Pref key for trick-display pause. Typed in PrefsMap. */
 const TRICK_PAUSE_KEY = 'trickPauseMs';
+
+/** Pref key for the auto-advance-hands toggle. Typed in PrefsMap. */
+const AUTO_ADVANCE_HANDS_KEY = 'autoAdvanceHands';
+
+/**
+ * Default for {@link autoAdvanceHands}. When `true`, the state module
+ * dispatches the next hand automatically a short grace period after the
+ * post-trick pause clears.
+ */
+const DEFAULT_AUTO_ADVANCE_HANDS = true;
+
+/**
+ * Grace period (ms) between the post-trick pause clearing and the
+ * automatic `advanceToNextHand` dispatch. Gives the user a beat to read
+ * the final score before the next hand is dealt. The {@link
+ * HandCompletePanel} stays visible and clickable during this window —
+ * clicking "Next hand" advances instantly.
+ */
+const AUTO_ADVANCE_GRACE_MS = 300;
 
 /* ------------------------------------------------------------------ */
 /* Action log                                                         */
@@ -145,6 +164,19 @@ function readTrickPausePref(): number {
   return stored;
 }
 
+/**
+ * Read the auto-advance-hands preference. Uses the typed
+ * `getPref('autoAdvanceHands')` so the value goes through the same JSON
+ * round-trip as other prefs, and falls back to {@link
+ * DEFAULT_AUTO_ADVANCE_HANDS} (true) when absent or malformed.
+ */
+function readAutoAdvanceHandsPref(): boolean {
+  const stored = getPref(AUTO_ADVANCE_HANDS_KEY);
+  if (stored === undefined) return DEFAULT_AUTO_ADVANCE_HANDS;
+  if (typeof stored !== 'boolean') return DEFAULT_AUTO_ADVANCE_HANDS;
+  return stored;
+}
+
 /** Current game state. Subscribers re-render when this rune updates. */
 export const game = $state<{ value: GameState }>({ value: buildInitialState() });
 
@@ -162,6 +194,19 @@ export const botDelayMs = $state<{ value: number }>({ value: readBotDelayPref() 
  * next trick begins. 0 = legacy behaviour (no pause).
  */
 export const trickPauseMs = $state<{ value: number }>({ value: readTrickPausePref() });
+
+/**
+ * Whether the next hand is dispatched automatically after the
+ * post-trick pause clears on a `hand-complete` state. The
+ * {@link HandCompletePanel} remains visible and clickable so the user
+ * can advance instantly; this rune merely provides the fallback.
+ *
+ * `'game-complete'` is intentionally NOT auto-advanced — the user
+ * starts a new game explicitly so they can read the final result.
+ */
+export const autoAdvanceHands = $state<{ value: boolean }>({
+  value: readAutoAdvanceHandsPref(),
+});
 
 /**
  * The trick the table should display while we hold for `trickPauseMs`.
@@ -327,6 +372,30 @@ let botEpoch = 0;
  */
 let humanAutoPlayEpoch = 0;
 
+/**
+ * Tracks the auto-advance-hands timer so a `startNewGameSession` (or a
+ * subsequent state change) can cancel an in-flight auto-advance before
+ * it dispatches against a stale `hand-complete` state. Bumped whenever
+ * the auto-advance effect schedules a new timer or the session resets.
+ */
+let autoAdvanceEpoch = 0;
+
+/**
+ * The currently-scheduled auto-advance `setTimeout` handle, or `null`
+ * when none is pending. Held outside the effect so
+ * `clearAutoAdvanceTimer` can cancel it from `startNewGameSession`
+ * without waiting for the effect cleanup to run.
+ */
+let autoAdvanceTimer: number | null = null;
+
+function clearAutoAdvanceTimer(): void {
+  if (autoAdvanceTimer !== null) {
+    window.clearTimeout(autoAdvanceTimer);
+    autoAdvanceTimer = null;
+  }
+  autoAdvanceEpoch++;
+}
+
 
 /**
  * Setup the reactive effects. Called once from `App.svelte` so the
@@ -358,21 +427,29 @@ export function installEffects(): void {
     return () => window.clearTimeout(timeout);
   });
 
-  // Auto-play when the human has exactly one card left.
+  // Auto-play whenever the human has exactly one legal play.
   //
-  // When the human's turn comes around and there's only one card in the
-  // south hand, there is no decision to make — auto-dispatch `playCard`
-  // for that lone card after a small delay so the highlight is visible.
-  // Gated by the trick-display pause to avoid playing on top of the
-  // just-completed four-card trick.
+  // Generalises the prior "1 card in hand" rule: any time south is on
+  // the play and the rules engine reports a single legal `playCard`
+  // action — e.g. only one card of the led suit (must follow), or
+  // genuinely one card left in hand — there is no decision to make, so
+  // we auto-dispatch the lone option after a brief delay (the highlight
+  // gives the player a moment to read the card). Gated by the
+  // trick-display pause to avoid playing on top of the just-completed
+  // trick. The explicit `phase === 'playing'` check is kept so the
+  // effect cannot fire during `dealer-discard` (where `legalActions`
+  // returns `discardKitty` actions, which are correctly filtered out
+  // below as a defence in depth).
   $effect(() => {
     const state = game.value;
     if (displayedTrick.value !== null) return;
     if (state.phase !== 'playing') return;
     if (state.turn !== HUMAN_SEAT) return;
-    const hand = state.hands[HUMAN_SEAT];
-    if (hand.length !== 1) return;
-    const card = hand[0]!;
+    const playOptions = legalActions(state, HUMAN_SEAT).filter(
+      (a) => a.type === 'playCard',
+    );
+    if (playOptions.length !== 1) return;
+    const card = playOptions[0]!.card;
 
     humanAutoPlayEpoch++;
     const myEpoch = humanAutoPlayEpoch;
@@ -387,12 +464,67 @@ export function installEffects(): void {
       const cur = game.value;
       if (cur.phase !== 'playing') return;
       if (cur.turn !== HUMAN_SEAT) return;
-      const curHand = cur.hands[HUMAN_SEAT];
-      if (curHand.length !== 1) return;
+      const curOptions = legalActions(cur, HUMAN_SEAT).filter(
+        (a) => a.type === 'playCard',
+      );
+      if (curOptions.length !== 1) return;
       if (displayedTrick.value !== null) return;
-      dispatchUser({ type: 'playCard', seat: HUMAN_SEAT, card });
+      dispatchUser({ type: 'playCard', seat: HUMAN_SEAT, card: curOptions[0]!.card });
     }, delay);
     return () => window.clearTimeout(timeout);
+  });
+
+  // Auto-advance hands.
+  //
+  // After the 5th trick resolves to `hand-complete`, wait for the
+  // post-trick display pause to clear (it freezes the final played card
+  // on the table for `trickPauseMs`) and then dispatch the next hand
+  // automatically. The HandCompletePanel stays visible and clickable
+  // throughout the grace window so the user can advance instantly.
+  //
+  // Trigger conditions, all required:
+  //   - `autoAdvanceHands.value === true` (settings toggle)
+  //   - `displayedTrick.value === null` (no trick frozen on the table)
+  //   - `game.value.phase === 'hand-complete'`
+  //
+  // `'game-complete'` is intentionally excluded — at game over we want
+  // the user to read the final result and start a new game explicitly.
+  //
+  // Edge case: when `trickPauseMs === 0`, no pause is taken, so the
+  // 5th trick resolution lands the state directly in `hand-complete`
+  // with `displayedTrick.value` already null. The conditions above
+  // still hold, so the effect schedules the auto-advance after the
+  // {@link AUTO_ADVANCE_GRACE_MS} grace period.
+  //
+  // The cleanup return cancels any timer that hasn't fired yet — any
+  // upstream reactive dependency change (e.g., `startNewGameSession`
+  // resetting `game.value`, the user clicking "Next hand" manually) is
+  // therefore guaranteed to abort an in-flight auto-advance even before
+  // the explicit `clearAutoAdvanceTimer` call in `startNewGameSession`.
+  $effect(() => {
+    const state = game.value;
+    const dt = displayedTrick.value;
+    const enabled = autoAdvanceHands.value;
+    if (!enabled) return;
+    if (dt !== null) return;
+    if (state.phase !== 'hand-complete') return;
+    autoAdvanceEpoch++;
+    const myEpoch = autoAdvanceEpoch;
+    const handle = window.setTimeout(() => {
+      autoAdvanceTimer = null;
+      if (myEpoch !== autoAdvanceEpoch) return;
+      // Re-check guards at fire time — state may have moved since the
+      // timer was scheduled (manual click, new game, etc.).
+      if (!autoAdvanceHands.value) return;
+      if (displayedTrick.value !== null) return;
+      if (game.value.phase !== 'hand-complete') return;
+      dispatchNextHand();
+    }, AUTO_ADVANCE_GRACE_MS);
+    autoAdvanceTimer = handle;
+    return () => {
+      window.clearTimeout(handle);
+      if (autoAdvanceTimer === handle) autoAdvanceTimer = null;
+    };
   });
 
   // Persist newly-completed hands.
@@ -699,6 +831,9 @@ export async function startNewGameSession(opts?: {
   // start with a leftover trick frozen on the table.
   clearTrickPauseTimer();
   displayedTrick.value = null;
+  // Cancel any pending auto-advance — a new session must not dispatch
+  // a stale `dispatchNextHand` against the freshly seeded state.
+  clearAutoAdvanceTimer();
   game.value = state;
   handIndex.value = 0;
   persistedHandIds.value = new Set<string>();
@@ -838,6 +973,22 @@ export function setTrickPause(ms: number): void {
   const clamped = Math.max(0, Math.min(MAX_DELAY_MS, Math.floor(ms)));
   trickPauseMs.value = clamped;
   setPref(TRICK_PAUSE_KEY, clamped);
+}
+
+/**
+ * Update the auto-advance-hands toggle. When `false`, a freshly-completed
+ * hand stays in `hand-complete` until the user clicks "Next hand"
+ * (legacy behaviour). When `true`, the auto-advance effect schedules
+ * `dispatchNextHand` after the post-trick pause clears plus a brief
+ * grace period.
+ *
+ * Setting this to `false` cancels any in-flight auto-advance timer so
+ * a hand mid-grace doesn't tick over the moment the user toggles off.
+ */
+export function setAutoAdvanceHands(next: boolean): void {
+  autoAdvanceHands.value = next;
+  setPref(AUTO_ADVANCE_HANDS_KEY, next);
+  if (!next) clearAutoAdvanceTimer();
 }
 
 /**

@@ -10,9 +10,11 @@
   import Modal from './Modal.svelte';
   import Toggle from './Toggle.svelte';
   import {
+    autoAdvanceHands,
     botDelayMs,
     difficulty,
     selectedBackId,
+    setAutoAdvanceHands,
     setBotDelay,
     setCardBack,
     setDifficulty,
@@ -160,6 +162,11 @@
         value={variants.value.allowGoingAlone}
         label="Going alone"
         onchange={setAllowAlone}
+      />
+      <Toggle
+        value={autoAdvanceHands.value}
+        label="Auto-advance hands"
+        onchange={setAutoAdvanceHands}
       />
     </fieldset>
 

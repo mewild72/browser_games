@@ -1,15 +1,23 @@
 <script lang="ts">
   /**
-   * The cards currently played in the in-progress trick, labelled by
-   * which seat played them. Also displays a prominent trump indicator
+   * The cards currently played in the in-progress trick, arranged
+   * around the trump indicator at the cardinal position of the seat
+   * that played each card. Also displays a prominent trump indicator
    * during the `playing` phase so the human can see trump without
    * looking away from the centre of the board.
+   *
+   * Layout: a 3x3 CSS grid with named areas. The trump indicator
+   * always occupies the centre cell; played cards land at `north`,
+   * `south`, `east`, or `west` depending on which seat played them.
+   * Empty cardinal slots simply render no element — the grid keeps the
+   * geometry consistent.
    *
    * Trick rendering precedence:
    *   1. `displayedTrick.value` (from the state module) — if non-null,
    *      a trick was just completed and we're in the post-trick pause
-   *      window: render those four cards so the human sees the final
-   *      card before the table clears.
+   *      window: the cards are surfaced near the winning seat (see
+   *      `<PlayerSeat>`), so the centre stays empty (only the trump
+   *      indicator remains visible).
    *   2. `plays` prop — the in-progress current trick.
    *
    * The trump-indicator size shrinks while a trick is in progress so
@@ -34,17 +42,27 @@
   let { plays, trump }: Props = $props();
 
   /**
-   * Cards to actually render. While the post-trick pause is active,
-   * `displayedTrick.value` carries the just-completed trick's four
-   * plays; otherwise we fall back to the prop's in-progress plays.
+   * Cards to render in the centre. While the post-trick pause is
+   * active, the just-completed trick is rendered NEXT TO THE WINNING
+   * SEAT (see `<PlayerSeat>`), and the centre stays empty so the
+   * winner-located cluster is the only place that trick appears. Once
+   * the pause clears, the centre falls back to rendering the
+   * in-progress `plays` prop.
    */
   const visiblePlays = $derived<readonly TrickPlay[]>(
-    displayedTrick.value !== null ? displayedTrick.value.plays : plays,
+    displayedTrick.value !== null ? [] : plays,
   );
+  /**
+   * True while the post-trick pause is on. The centre area stays empty
+   * during this window — only the trump indicator remains visible — so
+   * the won-trick overlay near the winner's seat is unambiguous.
+   */
   const isFrozen = $derived(displayedTrick.value !== null);
   /**
    * Trump indicator size: shrinks while cards are in the centre so
-   * they're not visually crowded.
+   * they're not visually crowded. During the post-trick pause the
+   * centre is empty, so we let the indicator stay large for visual
+   * continuity through the freeze window.
    */
   const indicatorSize = $derived<'large' | 'small'>(
     visiblePlays.length === 0 ? 'large' : 'small',
@@ -53,28 +71,33 @@
 
 <section class="trick" aria-labelledby="trick-heading">
   <h3 id="trick-heading" class="sr-only">
-    {visiblePlays.length === 0
-      ? 'Current trick, no cards played yet'
-      : isFrozen
-        ? `Trick complete, ${visiblePlays.length} cards played`
+    {isFrozen
+      ? 'Trick complete; cards moved to winner.'
+      : visiblePlays.length === 0
+        ? 'Current trick, no cards played yet'
         : `Current trick, ${visiblePlays.length} ${visiblePlays.length === 1 ? 'card' : 'cards'} played`}
   </h3>
-  {#if trump !== undefined}
-    <div class="trump-slot" class:corner={visiblePlays.length > 0}>
-      <TrumpIndicator suit={trump} size={indicatorSize} />
-    </div>
-  {/if}
-  {#if visiblePlays.length === 0}
+  <div
+    class="trick-grid"
+    role={visiblePlays.length === 0 ? undefined : 'list'}
+    aria-label={visiblePlays.length === 0
+      ? undefined
+      : `Trick, ${visiblePlays.length} cards played`}
+  >
+    {#if trump !== undefined}
+      <div class="trump-slot">
+        <TrumpIndicator suit={trump} size={indicatorSize} />
+      </div>
+    {/if}
+    {#each visiblePlays as play (play.seat)}
+      <div class="play" style:grid-area={play.seat} role="listitem">
+        <span class="seat">{play.seat}</span>
+        <CardView card={play.card} />
+      </div>
+    {/each}
+  </div>
+  {#if visiblePlays.length === 0 && !isFrozen && trump === undefined}
     <p class="empty">No card played yet.</p>
-  {:else}
-    <ul class="plays" aria-label={`Trick, ${visiblePlays.length} cards played`}>
-      {#each visiblePlays as play (play.seat)}
-        <li>
-          <span class="seat">{play.seat}</span>
-          <CardView card={play.card} />
-        </li>
-      {/each}
-    </ul>
   {/if}
 </section>
 
@@ -89,28 +112,28 @@
     min-block-size: 7rem;
     inline-size: 100%;
   }
-  /* Trump banner — large, centred when no cards are on the table; it
-     drops to a corner and shrinks when a trick is in progress so the
-     cards keep the spotlight. */
+  /*
+    3x3 grid with named areas. The trump indicator always sits in the
+    centre; played cards align to the cardinal direction of the seat
+    that played them. Empty cells render nothing — the grid still
+    reserves the geometry so the trump centring is stable.
+  */
+  .trick-grid {
+    display: grid;
+    grid-template-areas:
+      ".     north  ."
+      "west  trump  east"
+      ".     south  .";
+    gap: var(--space-3);
+    place-items: center;
+  }
   .trump-slot {
+    grid-area: trump;
     display: flex;
     justify-content: center;
+    align-items: center;
   }
-  .trump-slot.corner {
-    position: absolute;
-    inset-block-start: var(--space-2);
-    inset-inline-end: var(--space-2);
-  }
-  .plays {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    gap: var(--space-5);
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  .plays li {
+  .play {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -133,7 +156,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .plays li {
+    .play {
       animation: none;
     }
   }

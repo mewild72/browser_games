@@ -8,12 +8,16 @@
    * track of mid-trick — this is the one that lives where the eyes
    * already are.
    *
-   * Visual: the suit's unicode glyph in the appropriate suit colour
-   * (`--suit-red-on-felt` for hearts/diamonds, `--suit-black-on-felt`
-   * for spades/clubs — the `-on-felt` variants pass contrast against
-   * the green-felt background, unlike the `--suit-red` / `--suit-black`
-   * tokens that target the cream card surface). A small uppercase
-   * "TRUMP" label sits beside the glyph.
+   * Visual: an ornate decorative suit symbol rendered from the bundled
+   * WebP at `src/assets/cards/optimized/suits/{club|diamond|heart|spade}.webp`
+   * via `suitUrls`. If the bundled URL is unavailable (e.g. asset not
+   * yet generated), the component falls back to the unicode glyph in
+   * the appropriate suit colour (`--suit-red-on-felt` for hearts /
+   * diamonds, `--suit-black-on-felt` for spades / clubs — the
+   * `-on-felt` variants pass contrast against the green-felt
+   * background, unlike the `--suit-red` / `--suit-black` tokens that
+   * target the cream card surface). A small uppercase "TRUMP" label
+   * sits beside the symbol.
    *
    * Sizing variants: `size="large"` is the default centre presentation
    * shown while no trick is in progress; `size="small"` is the corner
@@ -23,6 +27,7 @@
    * Owner: svelte-component-architect
    */
   import type { Suit } from '@/lib/types';
+  import { suitUrls } from '@/lib/cards/art';
 
   type Props = {
     suit: Suit;
@@ -46,6 +51,7 @@
 
   const isRed = $derived(suit === 'hearts' || suit === 'diamonds');
   const ariaLabel = $derived(`Trump suit: ${suit}`);
+  const imageUrl = $derived(suitUrls[suit]);
 </script>
 
 <div
@@ -56,7 +62,13 @@
   role="img"
   aria-label={ariaLabel}
 >
-  <span class="symbol" aria-hidden="true">{suitGlyph(suit)}</span>
+  <span class="symbol" aria-hidden="true">
+    {#if imageUrl !== undefined}
+      <img class="symbol-img" src={imageUrl} alt="" />
+    {:else}
+      <span class="symbol-glyph">{suitGlyph(suit)}</span>
+    {/if}
+  </span>
   <span class="label" aria-hidden="true">Trump</span>
 </div>
 
@@ -78,9 +90,23 @@
     color: var(--suit-red-on-felt);
   }
   .symbol {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* Sized via the wrapper; image scales to fit. The glyph fallback
+       picks up font-size from `.symbol-glyph` below. */
+    inline-size: 2.75rem;
+    block-size: 2.75rem;
+    line-height: 1;
+  }
+  .symbol-img {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: contain;
+    display: block;
+  }
+  .symbol-glyph {
     font-size: 2.75rem;
-    /* Drop a touch of weight from the glyph so the label reads at the
-       same optical level. */
     line-height: 1;
   }
   .label {
@@ -97,6 +123,10 @@
     padding: var(--space-1) var(--space-3);
   }
   .trump-indicator.small .symbol {
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+  }
+  .trump-indicator.small .symbol-glyph {
     font-size: 1.5rem;
   }
   .trump-indicator.small .label {

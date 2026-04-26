@@ -205,6 +205,14 @@ export type PrefsMap = {
    * to the bot-delay slider.
    */
   trickPauseMs: number;
+  /**
+   * When `true`, after a hand completes and the post-trick display pause
+   * elapses, the next hand is dispatched automatically (no "Next hand"
+   * click required). Default behaviour when unset is `true`. Game-complete
+   * is intentionally NOT auto-advanced — the user starts a new game
+   * explicitly. UI toggle lives in the Settings modal.
+   */
+  autoAdvanceHands: boolean;
 };
 
 /* ------------------------------------------------------------------ */

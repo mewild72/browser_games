@@ -33,5 +33,23 @@
       "label": "Royal Purple",
       "path": "backs/royal-purple.webp"
     }
-  ]
+  ],
+  "suits": {
+    "club": {
+      "label": "Clubs",
+      "path": "suits/club.webp"
+    },
+    "diamond": {
+      "label": "Diamonds",
+      "path": "suits/diamond.webp"
+    },
+    "heart": {
+      "label": "Hearts",
+      "path": "suits/heart.webp"
+    },
+    "spade": {
+      "label": "Spades",
+      "path": "suits/spade.webp"
+    }
+  }
 }

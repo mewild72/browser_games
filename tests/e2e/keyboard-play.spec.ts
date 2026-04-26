@@ -41,6 +41,9 @@ test.describe('Keyboard play', () => {
       localStorage.setItem('euchre.pref.botDelayMs', '0');
       // Skip the post-trick pause to keep the test under timeout.
       localStorage.setItem('euchre.pref.trickPauseMs', '0');
+      // Manual advance: the test loop watches for `hand-complete` and
+      // clicks "Next hand". Auto-advance would race that click.
+      localStorage.setItem('euchre.pref.autoAdvanceHands', 'false');
     });
     await page.goto('/');
 

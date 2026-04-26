@@ -33,4 +33,5 @@ coverage/
 # IS committed; only the PNG intermediates and their manifest are excluded.
 src/assets/cards/faces/*.png
 src/assets/cards/backs/*.png
+src/assets/cards/suits/*.png
 src/assets/cards/manifest.json

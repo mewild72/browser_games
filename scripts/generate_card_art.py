@@ -23,6 +23,9 @@ Output layout (output dir, default browser_games/src/assets/cards):
     forest-green.png
     royal-purple.png
     midnight-black.png
+  suits/
+    club.png diamond.png heart.png spade.png   (standalone suit symbols
+    on transparent background; used for the trump indicator and other UI)
   manifest.json
 
 The court cards' dimensions (1054x1492) are treated as the canonical card
@@ -93,6 +96,11 @@ BACKS: Dict[str, Tuple[str, str]] = {
     "royal-purple":    ("bg-purple", "Royal Purple"),
     "midnight-black":  ("bg-black",  "Midnight Black"),
 }
+
+# Standalone suit-symbol output dimensions. Suits are 1:1 and the trump
+# indicator may render at varied sizes — 600x600 gives plenty of headroom
+# for sharp downscaling.
+SUIT_SYMBOL_SIZE = 600
 
 # Pip-card aesthetics. Tuned to match the court-card cream/black frame.
 CARD_BG_COLOR = (243, 235, 225, 255)   # cream — matches court card body
@@ -370,6 +378,34 @@ def render_pip_card(
     return canvas
 
 
+# --- Standalone suit symbols ----------------------------------------------
+
+def render_suit_symbol(suit_img: Image.Image, size: int) -> Image.Image:
+    """Render a standalone suit symbol on a transparent square canvas.
+
+    The input ``suit_img`` is already cropped to its bounding box and has its
+    white background keyed out (see ``load_suit_image``). This function
+    scales it to fit within ``size`` x ``size`` while preserving aspect
+    ratio, then centers it on a fully transparent canvas.
+    """
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+
+    sw, sh = suit_img.size
+    # Leave a small margin so the glyph never touches the canvas edge —
+    # downstream renderers might add their own border or shadow.
+    margin = int(size * 0.05)
+    target_box = size - 2 * margin
+    scale = min(target_box / sw, target_box / sh)
+    new_w = max(1, int(sw * scale))
+    new_h = max(1, int(sh * scale))
+    resized = suit_img.resize((new_w, new_h), Image.LANCZOS)
+
+    x = (size - new_w) // 2
+    y = (size - new_h) // 2
+    canvas.alpha_composite(resized, dest=(x, y))
+    return canvas
+
+
 # --- Pipeline --------------------------------------------------------------
 
 def inspect_sources(source_dir: Path) -> Tuple[int, int, Dict[str, dict]]:
@@ -435,6 +471,39 @@ def copy_or_skip(src: Path, dest: Path, dry_run: bool) -> None:
     shutil.copyfile(src, dest)
 
 
+SUIT_LABELS: Dict[str, str] = {
+    "club":    "Clubs",
+    "diamond": "Diamonds",
+    "heart":   "Hearts",
+    "spade":   "Spades",
+}
+
+
+def _scan_suits(suits_dir: Path, ext: str) -> Dict[str, Dict[str, str]]:
+    """Scan a suits directory for files with the given extension and
+    return a deterministic dict keyed by suit name. Logs a warning if
+    fewer than 4 entries are found."""
+    found: Dict[str, Dict[str, str]] = {}
+    if suits_dir.is_dir():
+        for f in sorted(suits_dir.iterdir()):
+            if not f.is_file() or f.suffix.lower() != ext.lower():
+                continue
+            name = f.stem
+            label = SUIT_LABELS.get(name, name.title())
+            found[name] = {
+                "label": label,
+                "path": f"suits/{f.name}",
+            }
+    if len(found) < 4:
+        sys.stderr.write(
+            f"WARNING: suits directory {suits_dir} contains "
+            f"{len(found)} entr{'y' if len(found) == 1 else 'ies'} "
+            "(expected 4: club, diamond, heart, spade). "
+            "Writing what is present.\n"
+        )
+    return found
+
+
 def write_manifest(output_dir: Path, dry_run: bool) -> None:
     """Scan the output dirs and write manifest.json. Backs are sorted by
     label so the picker is stable."""
@@ -455,6 +524,8 @@ def write_manifest(output_dir: Path, dry_run: bool) -> None:
                     "path": f"backs/{f.name}",
                 })
 
+    found_suits = _scan_suits(output_dir / "suits", ".png")
+
     manifest = {
         "schemaVersion": 1,
         "faces": {
@@ -465,6 +536,7 @@ def write_manifest(output_dir: Path, dry_run: bool) -> None:
             },
         },
         "backs": found_backs,
+        "suits": found_suits,
     }
 
     dest = output_dir / "manifest.json"
@@ -514,12 +586,14 @@ def run(source_dir: Path, output_dir: Path, dry_run: bool) -> None:
     print()
 
     pip_count = 0
+    suit_count = 0
     court_count = 0
     joker_count = 0
     back_count = 0
 
     faces_dir = output_dir / "faces"
     backs_dir = output_dir / "backs"
+    suits_dir = output_dir / "suits"
 
     # 1) Generate 40 pip cards.
     print("Generating pip cards...")
@@ -542,7 +616,18 @@ def run(source_dir: Path, output_dir: Path, dry_run: bool) -> None:
     print(f"  -> {pip_count} pip cards")
     print()
 
-    # 2) Copy + rename court cards.
+    # 2) Emit standalone suit symbols (used for the trump indicator and
+    #    other UI elements that need an isolated suit glyph).
+    print("Generating standalone suit symbols...")
+    for letter, stem, _color_label in SUITS:
+        symbol = render_suit_symbol(suit_images[letter], SUIT_SYMBOL_SIZE)
+        dest = suits_dir / f"{stem}.png"
+        write_or_skip(symbol, dest, dry_run)
+        suit_count += 1
+    print(f"  -> {suit_count} suit symbols ({SUIT_SYMBOL_SIZE}x{SUIT_SYMBOL_SIZE} transparent)")
+    print()
+
+    # 3) Copy + rename court cards.
     print("Normalizing court cards...")
     for out_stem, src_stem in COURTS.items():
         src = source_dir / f"{src_stem}.png"
@@ -552,7 +637,7 @@ def run(source_dir: Path, output_dir: Path, dry_run: bool) -> None:
     print(f"  -> {court_count} court cards")
     print()
 
-    # 3) Copy + rename jokers.
+    # 4) Copy + rename jokers.
     print("Normalizing jokers...")
     for out_stem, src_stem in JOKERS.items():
         src = source_dir / f"{src_stem}.png"
@@ -562,7 +647,7 @@ def run(source_dir: Path, output_dir: Path, dry_run: bool) -> None:
     print(f"  -> {joker_count} jokers (JK1=black, JK2=red)")
     print()
 
-    # 4) Copy + rename backs.
+    # 5) Copy + rename backs.
     print("Normalizing backs...")
     for out_stem, (src_stem, _label) in BACKS.items():
         src = source_dir / f"{src_stem}.png"
@@ -572,15 +657,15 @@ def run(source_dir: Path, output_dir: Path, dry_run: bool) -> None:
     print(f"  -> {back_count} backs")
     print()
 
-    # 5) Manifest.
+    # 6) Manifest.
     print("Writing manifest...")
     write_manifest(output_dir, dry_run)
     print()
 
-    total = pip_count + court_count + joker_count + back_count
+    total = pip_count + suit_count + court_count + joker_count + back_count
     print("=" * 50)
     print(
-        f"Generated {pip_count} pip cards. "
+        f"Generated {pip_count} pip cards and {suit_count} suit symbols. "
         f"Renamed {court_count + joker_count + back_count} source files. "
         f"Wrote manifest. "
         f"Total output: {total} files in {output_dir}."
