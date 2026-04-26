@@ -13,13 +13,12 @@ import { expect, test } from '@playwright/test';
  * `dist/index.html`. If the dist is missing the test is skipped with
  * a clear message rather than failing.
  *
- * Browser flag note: headless Chromium blocks ES-module imports from
- * `file://` (CORS / "module from disallowed origin") unless the
- * `--allow-file-access-from-files` flag is passed. We override the
- * launch options for this spec only; production users will hit the
- * same flag-less Chrome on a real machine, but the build works there
- * because Chrome treats top-level navigations to `file://` differently
- * from headless contexts.
+ * Browser flag note: the production build is a single self-contained
+ * `dist/index.html` (via `vite-plugin-singlefile` — JS/CSS/card art are
+ * all base64-inlined). Because there are no separate module chunks to
+ * fetch cross-origin, the file:// CORS restrictions on ES-module imports
+ * no longer apply, and `--allow-file-access-from-files` is no longer
+ * required to load the build in headless Chromium.
  *
  * Owner: svelte-qa-validator
  */
@@ -27,12 +26,6 @@ import { expect, test } from '@playwright/test';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DIST_INDEX = resolve(__dirname, '../../dist/index.html');
-
-test.use({
-  launchOptions: {
-    args: ['--allow-file-access-from-files'],
-  },
-});
 
 test.describe('file:// portability', () => {
   test.skip(

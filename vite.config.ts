@@ -1,10 +1,11 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { viteSingleFile } from 'vite-plugin-singlefile';
 import { fileURLToPath } from 'node:url';
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [svelte(), viteSingleFile()],
   // Critical for file:// portability — emit relative asset paths in dist/index.html
   base: './',
   resolve: {
@@ -15,6 +16,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    assetsInlineLimit: 4096,
+    // Inline EVERYTHING (JS, CSS, fonts, WebP card art) into dist/index.html
+    // so the build is a single self-contained file that loads from file://
+    // without CORS errors on chunked module imports.
+    cssCodeSplit: false,
+    assetsInlineLimit: 100_000_000,
+    rollupOptions: {
+      output: {
+        inlineDynamicImports: true,
+      },
+    },
   },
 });

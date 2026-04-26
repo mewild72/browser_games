@@ -90,3 +90,31 @@ Items that aren't tied to a dependency version but track planned work:
 - `scripts/generate_card_art.py` produces PNG intermediates in `src/assets/cards/{faces,backs}/` (gitignored)
 - `scripts/optimize_card_art.py` produces WebP under `src/assets/cards/optimized/` (committed)
 - Run both via `npm run regenerate-art` whenever the source images change
+
+---
+
+## Single-file build (2026-04-25)
+
+**Change:** Switched the production build from chunked output (`dist/index.html` + `dist/assets/*.js` + `dist/assets/*.css` + 59 WebPs) to a single self-contained `dist/index.html` via [`vite-plugin-singlefile`](https://github.com/richardtallent/vite-plugin-singlefile).
+
+**Why:** Firefox and stock Chrome refuse to load ES-module `<script type="module" src="./assets/index-XXX.js">` cross-origin under `file://` — every module fetch is blocked with `Cross-Origin Request Blocked` / `Module source URI is not allowed in this document`. Headless Chromium can be flagged with `--allow-file-access-from-files` (and the e2e suite was doing exactly that), but real users opening `dist/index.html` by double-click cannot pass flags. The chunked build therefore broke the project's USB-portability promise.
+
+**Configuration** in `vite.config.ts`:
+- `viteSingleFile()` plugin (build-only — dev mode unaffected)
+- `build.cssCodeSplit: false`
+- `build.assetsInlineLimit: 100_000_000` (inlines every WebP card)
+- `build.rollupOptions.output.inlineDynamicImports: true`
+- Preserved `base: './'`
+
+**Result:**
+- `dist/` contains exactly one file: `index.html` (~5.5 MB, was 4.3 MB across many files chunked)
+- Loads cleanly under `file://` in stock Firefox/Chrome with zero flags
+- `tests/e2e/file-protocol.spec.ts` no longer needs `--allow-file-access-from-files`
+- All 142 vitest + 11 Playwright tests still pass
+
+**Tradeoffs:**
+- Larger single file, slightly slower initial parse on a cold cache
+- Can't lazy-load — but the bundle is small and there's nothing to lazy-load anyway
+- USB distribution simplified to "copy one file"
+
+**Future:** if the bundle grows past ~10 MB (e.g., adding sounds, more card-back themes), revisit. Could either ship miniserve alongside (see skills/vite-static-build.md) or drop back to chunked + miniserve.

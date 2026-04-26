@@ -51,11 +51,20 @@ To play on a machine without Node:
 
 ```bash
 npm run build
-# Copy the dist/ folder to a USB drive, another machine, anywhere.
-# Open dist/index.html in any modern browser.
+# Copy dist/index.html (a single self-contained file ~5–6 MB) to a USB
+# drive, another machine, anywhere. Double-click it in any modern browser.
 ```
 
-If `file://` ever proves insufficient (e.g., a future feature requires a server origin), a tiny portable static-file server like [miniserve](https://github.com/svenstaro/miniserve) can be shipped alongside `dist/`. See `CLAUDE.md` for details.
+The build is a single self-contained `dist/index.html` — JavaScript, CSS,
+and all card art (59 WebPs) are base64-inlined. There is no `dist/assets/`
+folder to copy alongside it, and no CORS issues loading separate module
+chunks under `file://` (which is what Firefox and stock Chrome refuse to
+do). One file = the entire game.
+
+If `file://` ever proves insufficient (e.g., a future feature requires a
+server origin), a tiny portable static-file server like
+[miniserve](https://github.com/svenstaro/miniserve) can be shipped
+alongside `dist/`. See `CLAUDE.md` for details.
 
 ## Project Layout
 
